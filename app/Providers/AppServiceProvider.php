@@ -1,6 +1,8 @@
 <?php
 
 namespace App\Providers;
+use App\Interfaces\CronServiceInterface;
+use App\Services\CronService;
 
 use Illuminate\Support\ServiceProvider;
 
@@ -23,6 +25,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        //
+        $this->app->bind(
+            CronServiceInterface::class,
+            CronService::class
+        );
     }
 }
