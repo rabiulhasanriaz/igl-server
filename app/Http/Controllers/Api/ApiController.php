@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Model\AccSmsBalance;
 use App\Model\AccUserCreditHistory;
 use App\Model\ApiLog;
 use App\Model\SenderIdRegister;
@@ -208,12 +207,12 @@ class ApiController extends Controller
 
         // ========== END FIX ==========
 
-        $total_cost = \BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, $user->id);
+        $total_cost = \App\Helpers\BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, $user->id);
 
-        if (\BalanceHelper::user_available_balance($user->id) < $total_cost) {
+        if (\App\Helpers\BalanceHelper::user_available_balance($user->id) < $total_cost) {
             $this->finishApiLog($apiLog, $startedAt, 'error', '445120', 'Not enough balance', $user->id);
             return response()->json(['code'=>'445120', 'message'=>'You haven\'t enough balance . please recharge first...']);
-        } elseif (\BalanceHelper::check_parents_available_balance($user->id, $sms_number, $validUniqueNumbers, $isMasking) == false) {
+        } elseif (\App\Helpers\BalanceHelper::check_parents_available_balance($user->id, $sms_number, $validUniqueNumbers, $isMasking) == false) {
             $this->finishApiLog($apiLog, $startedAt, 'error', '445130', 'Parent balance not enough', $user->id);
             return response()->json(['code'=>'445130', 'message'=>'Your reseller don\'t have enough balance . told him to recharge first...']);
         } elseif ($isMasking == true && mb_strlen($request->msg) > 500) {
@@ -275,7 +274,7 @@ $total_sms_number = $sms_number * count($validUniqueNumbers);
                         'campaign_id' => $insertCampaign->id,
                         'scp_cell_no' => $number,
                         'scp_message' => $messageWithoutEmojis,
-                        'scp_sms_cost' => \BalanceHelper::singleSmsCost($sms_number, $number, $isMasking, $user->id),
+                        'scp_sms_cost' => \App\Helpers\BalanceHelper::singleSmsCost($sms_number, $number, $isMasking, $user->id),
                         'operator_id' => $operator['id'],
                         'scp_campaign_type' => '1',
                         'scp_deal_type' => '1',
@@ -321,21 +320,18 @@ $total_sms_number = $sms_number * count($validUniqueNumbers);
                         $op = \PhoneNumber::checkOperator($value);
                     }
 
-                    $campaign_cost = \BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, $user_det->id);
+                    $campaign_cost = \App\Helpers\BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, $user_det->id);
 
-                    AccSmsBalance::create([
-                        'asb_paid_by' => $user_det->create_by,
-                        'asb_pay_to' => $user_det->id,
-                        'asb_pay_ref' => $campaign_id,
-                        'asb_credit' => '0',
-                        'asb_debit' => $campaign_cost,
-                        'asb_submit_time' => $current_date,
-                        'asb_target_time' => $current_date,
-                        'asb_pay_mode' => '4',
-                        'asb_payment_status' => '1',
-                        'asb_deal_type' => '2',
-                        'credit_return_type' => '0',
-                    ]);
+                    \App\Helpers\BalanceHelper::addDebit(
+                        $user_det->create_by,
+                        $user_det->id,
+                        $campaign_id,
+                        $campaign_cost,
+                        4,
+                        1,
+                        2,
+                        $current_date
+                    );
 
                     $user_det = User::where('id', $user_det->create_by)->first();
                     $user_position = $user_det->position;
@@ -531,7 +527,7 @@ $total_sms_number = $sms_number * count($validUniqueNumbers);
         }
 
         try {
-            $userAvailableBalance = \BalanceHelper::user_available_balance($user->id);
+            $userAvailableBalance = \App\Helpers\BalanceHelper::user_available_balance($user->id);
             return response()->json(['code'=>'445000', 'balance'=>number_format($userAvailableBalance, 2)." tk"]);
         } catch (\Exception $e) {
             return response()->json(['code'=>'445160', 'message'=>'Something was wrong to check balance. please contact with admin!!! ..']);
