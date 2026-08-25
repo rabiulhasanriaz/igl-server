@@ -15,6 +15,9 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Log;
+use App\Model\AccSmsRate;
+use App\Model\Operator;
+use Illuminate\Support\Facades\DB;
 
 class SmsSendDesktopController extends Controller
 {
@@ -77,19 +80,83 @@ class SmsSendDesktopController extends Controller
         /*sms count*/
         if ($userDetail->template_permission != NULL) {
             $a = $request->msg;
-            // $number = str_replace(['+'], '', filter_var($a, FILTER_SANITIZE_NUMBER_INT));
-            $num = array();
-            $main_text = array();
-            $filteredNumbers = preg_match_all('!\d+-?\d+!', $a, $matches);
-            $num = $matches[0][0];
-            //dd($num);
 
-            $main_text = \SmsHelper::main_test_api($userDetail->user_id,$num);
-            // dd($main_text);
-        }else {
+            $num = null;
+
+            if (strpos($a, 'Code is ') !== false) {
+                $parts = explode('Code is ', $a);
+                if (isset($parts[1])) {
+                    $numberFromText = $parts[1];
+                    $num = explode(' ', $numberFromText)[0] ?? null;
+                }
+
+            } elseif (strpos($a, 'HI Use ') !== false) {
+                $parts = explode('HI Use ', $a);
+                if (isset($parts[1])) {
+                    $numberFromText = $parts[1];
+                    $num = explode(' ', $numberFromText)[0] ?? null;
+                }
+
+            } elseif (strpos($a, 'Hi Use ') !== false) {
+                $parts = explode('Hi Use ', $a);
+                if (isset($parts[1])) {
+                    $numberFromText = $parts[1];
+                    $num = explode(' ', $numberFromText)[0] ?? null;
+                }
+
+            } else {
+                preg_match_all('!\d+-?\d+!', $a, $matches);
+                if (!empty($matches[0][0])) {
+                    $num = $matches[0][0];
+                }
+            }
+
+            $text = \SmsHelper::main_test_api($userDetail->user_id, $num);
+
+            if ($userDetail->date_format != NULL) {
+                $main_text = $text . ".\n" . \SmsHelper::date_format_api($userDetail->user_id);
+            } else {
+                $main_text = $text;
+            }
+
+            $searchReplaceArray = array(
+                '0' => json_decode('"0\ufe0f\u20e3"'),
+                '1' => json_decode('"1\ufe0f\u20e3"'),
+                '2' => json_decode('"2\ufe0f\u20e3"'),
+                '3' => json_decode('"3\ufe0f\u20e3"'),
+                '4' => json_decode('"4\ufe0f\u20e3"'),
+                '5' => json_decode('"5\ufe0f\u20e3"'),
+                '6' => json_decode('"6\ufe0f\u20e3"'),
+                '7' => json_decode('"7\ufe0f\u20e3"'),
+                '8' => json_decode('"8\ufe0f\u20e3"'),
+                '9' => json_decode('"9\ufe0f\u20e3"'),
+            );
+
+            if (
+                strpos($main_text, '0') !== false ||
+                strpos($main_text, '1') !== false ||
+                strpos($main_text, '2') !== false ||
+                strpos($main_text, '3') !== false ||
+                strpos($main_text, '4') !== false ||
+                strpos($main_text, '5') !== false ||
+                strpos($main_text, '6') !== false ||
+                strpos($main_text, '7') !== false ||
+                strpos($main_text, '8') !== false ||
+                strpos($main_text, '9') !== false
+            ) {
+                $main_text = str_replace(
+                    array_keys($searchReplaceArray),
+                    array_values($searchReplaceArray),
+                    $main_text
+                );
+            } else {
+                $main_text = $request->msg;
+            }
+
+        } else {
             $main_text = $request->msg;
-            // dd($main_text);
         }
+
         if (\SmsHelper::is_unicode($main_text)) {
             $smsType = 'unicode'; //unicode
             $sms_number = \SmsHelper::unicode_sms_count($main_text);
@@ -101,12 +168,12 @@ class SmsSendDesktopController extends Controller
         }
 
         // $isMasking = \SmsHelper::isMasking($sender->id);
-        $total_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user->id);
+        $total_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user->id);
 
 
-        if (\BalanceHelper::user_available_balance($user->id) < $total_cost) {
+        if (\App\Helpers\BalanceHelper::user_available_balance($user->id) < $total_cost) {
             return response()->json(['code'=>'445120', 'message'=>'You haven\'t enough balance . please recharge first...']);
-        } elseif (\BalanceHelper::check_parents_Desktop_available_balance($user->id, $sms_number, $validUniqueNumbers) == false) {
+        } elseif (\App\Helpers\BalanceHelper::check_parents_Desktop_available_balance($user->id, $sms_number, $validUniqueNumbers) == false) {
             return response()->json(['code'=>'445130', 'message'=>'Your reseller don\'t have enough balance . told him to recharge first...']);
         } else {
             try {
@@ -143,75 +210,104 @@ class SmsSendDesktopController extends Controller
                 ]);
 
                 
-                $insertCount = 0;
-                $dataForInsert = array();
-                $serial = 0;
-                foreach ($validUniqueNumbers as $number) {
-                    
-                    $operator = \PhoneNumber::checkOperator($number);
+                // Load operator prefixes and the user's dynamic rates once.
+                $operatorByPrefix = [];
+                foreach (Operator::select('id', 'ope_number')->get() as $operatorRow) {
+                    foreach (explode(',', $operatorRow->ope_number) as $prefix) {
+                        $operatorByPrefix[trim($prefix)] = $operatorRow->id;
+                    }
+                }
 
-                    $desktopPending = SmsDesktopPending::create([
+                $rateByOperator = AccSmsRate::where('user_id', $user->id)
+                    ->pluck('asr_dynamic', 'operator_id')
+                    ->toArray();
+
+                $pendingRows = [];
+
+                foreach ($validUniqueNumbers as $number) {
+                    $prefix = substr($number, 0, 5);
+                    $operatorId = $operatorByPrefix[$prefix] ?? null;
+
+                    if (!$operatorId || !array_key_exists($operatorId, $rateByOperator)) {
+                        throw new \RuntimeException(
+                            'Operator or SMS rate is not configured for ' . $number
+                        );
+                    }
+
+                    $pendingRows[] = [
                         'user_id' => $user->id,
-                        // 'sender_id' => $sender->id,
                         'campaign_id' => $insertCampaign->id,
                         'sdp_cell_no' => $number,
                         'sdp_message' => $main_text,
-                        'sdp_sms_cost' => \BalanceHelper::singleSmsDesktopCost($sms_number, $number, $user->id),
-                        'operator_id' => $operator['id'],
-                        'sdp_campaign_type' => '1', //*1=instant, 2=Schedule *
-                        'sdp_deal_type' => '1', //* 1=SMS, 2=Campaign *
-                        'sdp_sms_type' => $sms_masking_type, //*1=NonMasking, 2=Masking*
+                        'sdp_customer_message' => $request->msg,
+                        'sdp_sms_cost' => round(
+                            ((float) $rateByOperator[$operatorId]) * $sms_number,
+                            4
+                        ),
+                        'operator_id' => $operatorId,
+                        'sdp_campaign_type' => '1',
+                        'sdp_deal_type' => '1',
+                        'sdp_sms_type' => $sms_masking_type,
                         'sdp_sms_id' => '0',
-                        'sdp_tried' => '0', //*Try For Send *
-                        'sdp_picked' => '0', //*0=not try, 1= try *
-                        'sdp_sms_text_type' => $smsType, //*SMS type=text/unicode*
+                        'sdp_tried' => '0',
+                        'sdp_picked' => '0',
+                        'sdp_sms_text_type' => $smsType,
                         'sdp_campaign_status' => '0',
                         'sdp_target_time' => $current_date,
-                        'sdp_status' => '1',
+                        'sdp_status' => '4',
                         'created_at' => $current_date,
                         'updated_at' => $current_date,
-                    ]);
-                    
-                    
+                    ];
                 }
-                // $updateStatus = 
 
+                DB::transaction(function () use (
+                    $pendingRows,
+                    $user,
+                    $sms_number,
+                    $validUniqueNumbers,
+                    $campaign_id,
+                    $current_date,
+                    $insertCampaign,
+                    $total_cost
+                ) {
+                    foreach (array_chunk($pendingRows, 1000) as $chunk) {
+                        SmsDesktopPending::insert($chunk);
+                    }
 
-                /*debit user balance*/
-                $user_position = $user->position;
-                $user_id = $user->id;
-
-                $user_det = User::where('id', $user_id)->first();
-
-                while ($user_position >= 1) {
-                    /*get total cost*/
-                    $campaign_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user_det->id);
-
-                    AccSmsBalance::create([
-                        'asb_paid_by' => $user_det->create_by,
-                        'asb_pay_to' => $user_det->id,
-                        'asb_pay_ref' => $campaign_id,
-                        'asb_credit' => '0',
-                        'asb_debit' => $campaign_cost,
-                        'asb_submit_time' => $current_date,
-                        'asb_target_time' => $current_date,
-                        'asb_pay_mode' => '4', //*campaign*
-                        'asb_payment_status' => '1', //*1=paid, 2=checking*
-                        'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                        'credit_return_type' => '0',
-                    ]);
-
-                    $user_det = User::where('id', $user_det->create_by)->first();
+                    /*debit user balance*/
+                    $user_det = $user;
                     $user_position = $user_det->position;
-                }
 
-                /*add user credit history*/
-                AccUserCreditHistory::create([
-                    'campaign_id' => $insertCampaign->id,
-                    'user_id' => $user->id,
-                    'uch_sms_count' => count($validUniqueNumbers),
-                    'uch_sms_cost' => $total_cost,
-                ]);
+                    while ($user_det && $user_position >= 1) {
+                        $campaign_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost(
+                            $sms_number,
+                            $validUniqueNumbers,
+                            $user_det->id
+                        );
+
+                        \App\Helpers\BalanceHelper::addDebit(
+                            $user_det->create_by,
+                            $user_det->id,
+                            $campaign_id,
+                            $campaign_cost,
+                            4,
+                            1,
+                            2,
+                            $current_date
+                        );
+
+                        $user_det = User::find($user_det->create_by);
+                        $user_position = $user_det ? $user_det->position : 0;
+                    }
+
+                    /*add user credit history*/
+                    AccUserCreditHistory::create([
+                        'campaign_id' => $insertCampaign->id,
+                        'user_id' => $user->id,
+                        'uch_sms_count' => count($validUniqueNumbers),
+                        'uch_sms_cost' => $total_cost,
+                    ]);
+                }, 3);
 
                 return response()->json(['code'=>'445000', 'message'=>'Message has been sent...']);
 
@@ -243,7 +339,7 @@ class SmsSendDesktopController extends Controller
         }
 
         try{
-            $userAvailableBalance = \BalanceHelper::user_available_balance($user->id);
+            $userAvailableBalance = \App\Helpers\BalanceHelper::user_available_balance($user->id);
             return response()->json(['code'=>'445000', 'balance'=>number_format($userAvailableBalance, 2)." tk"]);
         }catch (Exception $e){
             return response()->json(['code'=>'445160', 'message'=>'Something was wrong to check balance. please contact with admin!!! ..']);
