@@ -1,5 +1,5 @@
 <?php
-
+namespace App\Helpers;
 use App\Model\User;
 use App\Model\AccSmsBalance;
 use App\Model\AccSmsRate;

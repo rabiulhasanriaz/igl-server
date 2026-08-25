@@ -16,6 +16,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Log;
+use App\Helpers\PhoneNumber;
 
 class ApiController extends Controller
 {
@@ -152,8 +153,8 @@ class ApiController extends Controller
         $allContacts = explode(',', $request->contacts);
         $validNumbers = array();
         foreach ($allContacts as $contact) {
-            $number = \PhoneNumber::addNumberPrefix($contact);
-            if (\PhoneNumber::isValid($number)) {
+            $number = PhoneNumber::addNumberPrefix($contact);
+            if (PhoneNumber::isValid($number)) {
                 $validNumbers[] = $number;
             }
         }
@@ -239,9 +240,9 @@ class ApiController extends Controller
                 }
 
                 foreach ($validUniqueNumbers as $value) {
-                    $op = \PhoneNumber::checkOperator($value);
+                    $op = PhoneNumber::checkOperator($value);
                 }
-$total_sms_number = $sms_number * count($validUniqueNumbers);
+                $total_sms_number = $sms_number * count($validUniqueNumbers);
                 $insertCampaign = SmsCampaignId::create([
                     'user_id' => $user->id,
                     'sender_id' => $sender->id,
@@ -264,7 +265,7 @@ $total_sms_number = $sms_number * count($validUniqueNumbers);
                 $dataForInsert = array();
                 $serial = 0;
                 foreach ($validUniqueNumbers as $number) {
-                    $operator = \PhoneNumber::checkOperator($number);
+                    $operator = PhoneNumber::checkOperator($number);
 
                     $messageWithoutEmojis = preg_replace('/[\x{1F600}-\x{1F64F}]|[\x{1F300}-\x{1F5FF}]|[\x{1F680}-\x{1F6FF}]|[\x{2600}-\x{26FF}]|[\x{2700}-\x{27BF}]/u', '', $request->msg);
 
@@ -317,7 +318,7 @@ $total_sms_number = $sms_number * count($validUniqueNumbers);
                 while ($user_position >= 1) {
                     /*get total cost*/
                     foreach ($validUniqueNumbers as $value) {
-                        $op = \PhoneNumber::checkOperator($value);
+                        $op = PhoneNumber::checkOperator($value);
                     }
 
                     $campaign_cost = \App\Helpers\BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, $user_det->id);
