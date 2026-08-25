@@ -1,0 +1,19 @@
+[2019-06-10 18:34:05] local.ERROR: Command "cache:config" is not defined.
+
+Did you mean one of these?
+    cache:clear
+    cache:forget
+    cache:table {"exception":"[object] (Symfony\\Component\\Console\\Exception\\CommandNotFoundException(code: 0): Command \"cache:config\" is not defined.
+
+Did you mean one of these?
+    cache:clear
+    cache:forget
+    cache:table at /opt/lampp/htdocs/sms_new/included/vendor/symfony/console/Application.php:632)
+[stacktrace]
+#0 /opt/lampp/htdocs/sms_new/included/vendor/symfony/console/Application.php(226): Symfony\\Component\\Console\\Application->find('cache:config')
+#1 /opt/lampp/htdocs/sms_new/included/vendor/symfony/console/Application.php(145): Symfony\\Component\\Console\\Application->doRun(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#2 /opt/lampp/htdocs/sms_new/included/vendor/laravel/framework/src/Illuminate/Console/Application.php(89): Symfony\\Component\\Console\\Application->run(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#3 /opt/lampp/htdocs/sms_new/included/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(122): Illuminate\\Console\\Application->run(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#4 /opt/lampp/htdocs/sms_new/included/artisan(37): Illuminate\\Foundation\\Console\\Kernel->handle(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#5 {main}
+"} 

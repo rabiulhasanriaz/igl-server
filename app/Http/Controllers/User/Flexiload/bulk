@@ -1,0 +1,284 @@
+public function bulkLoadFormProcess(Request $request)
+{
+    $validateData = Validator::make($request->all(), [
+        'sms_file' => 'required',
+        'dynamic_name_column' => 'required',
+        'dynamic_number_column' => 'required',
+        'dynamic_amount_column' => 'required',
+        'dynamic_number_type_column' => 'required',
+        'dynamic_number_operator_column' => 'required',
+        'flexipin' => 'required',
+    ]);
+
+    if ($validateData->fails()) {
+        return redirect()->back()->withErrors($validateData)->withInput();
+    }
+
+    $user = auth()->user();
+    $flexipin = $request->flexipin;
+
+    if ($user->flexipin != $flexipin) {
+        return redirect()->back()->with(['type' => 'danger', 'message' => 'Wrong Flexipin !']);
+    }
+
+    $dynamic_name_column = (int) $request->dynamic_name_column - 1;
+    $dynamic_number_column = (int) $request->dynamic_number_column - 1;
+    $dynamic_amount_column = (int) $request->dynamic_amount_column - 1;
+    $dynamic_number_type_column = (int) $request->dynamic_number_type_column - 1;
+    $dynamic_number_operator_column = (int) $request->dynamic_number_operator_column - 1;
+
+    $remarks = $request->remarks;
+    $file = Input::file('sms_file');
+    $filename = $request->file('sms_file')->getClientOriginalName();
+    $fileType = \FileRead::getFileType($filename);
+
+    $allName1 = [];
+    $allContacts1 = [];
+    $allAmount1 = [];
+    $allNumberTypes1 = [];
+    $allOperator1 = [];
+
+    $allName = [];
+    $allContacts = [];
+    $allAmount = [];
+    $allNumberTypes = [];
+    $allOperator = [];
+
+    $validOperator = [
+        'airtel',
+        'robi',
+        'gp',
+        'teletalk',
+        'blink',
+        'gpst',
+    ];
+
+    if ($fileType != "Excel") {
+        return redirect()->back()->with(['type' => 'danger', 'message' => 'Invalid File Extention']);
+    }
+
+    $fileContents = Importer::make('Excel')->load($file)->getCollection();
+    $f = 0;
+
+    foreach ($fileContents as $rowIndex => $fileContent) {
+        if (
+            !isset($fileContent[$dynamic_name_column]) ||
+            !isset($fileContent[$dynamic_number_column]) ||
+            !isset($fileContent[$dynamic_amount_column]) ||
+            !isset($fileContent[$dynamic_number_type_column]) ||
+            !isset($fileContent[$dynamic_number_operator_column])
+        ) {
+            continue;
+        }
+
+        $allName1[$f] = (string) $fileContent[$dynamic_name_column];
+        $allContacts1[$f] = \PhoneNumber::addNumberPrefix((string) abs((int) $fileContent[$dynamic_number_column]));
+        $allAmount1[$f] = (int) $fileContent[$dynamic_amount_column];
+        $allNumberTypes1[$f] = (int) $fileContent[$dynamic_number_type_column];
+        $allOperator1[$f] = strtolower(trim((string) $fileContent[$dynamic_number_operator_column]));
+
+        if (($allAmount1[$f] < 10) || ($allAmount1[$f] > 50000)) {
+            continue;
+        }
+
+        if ($allNumberTypes1[$f] < 1 || $allNumberTypes1[$f] > 3) {
+            continue;
+        }
+
+        $f++;
+    }
+
+    $kz = 0;
+
+    for ($iz = 0; $iz < count($allContacts1); $iz++) {
+        if (!\PhoneNumber::isValid($allContacts1[$iz])) {
+            continue;
+        }
+
+        $shouldSplitAmount = (
+            (
+                in_array($allOperator1[$iz], ['robi', 'airtel', 'teletalk']) &&
+                in_array($allNumberTypes1[$iz], [1, 2])
+            ) ||
+            (
+                in_array($allOperator1[$iz], ['gp', 'blink']) &&
+                $allNumberTypes1[$iz] == 1
+            )
+        ) && $allAmount1[$iz] > 1000;
+
+        if ($shouldSplitAmount) {
+            $res = $allAmount1[$iz];
+            $limit = [];
+
+            while ($res > 1000) {
+                if ($res > 1000) {
+                    $limit[] = 1000;
+                    $res -= 1000;
+                } elseif ($res > 900) {
+                    $limit[] = 900;
+                    $res -= 900;
+                } elseif ($res > 800) {
+                    $limit[] = 800;
+                    $res -= 800;
+                } elseif ($res > 700) {
+                    $limit[] = 700;
+                    $res -= 700;
+                } elseif ($res > 600) {
+                    $limit[] = 600;
+                    $res -= 600;
+                } elseif ($res > 500) {
+                    $limit[] = 500;
+                    $res -= 500;
+                } elseif ($res > 400) {
+                    $limit[] = 400;
+                    $res -= 400;
+                } elseif ($res > 300) {
+                    $limit[] = 300;
+                    $res -= 300;
+                } elseif ($res > 200) {
+                    $limit[] = 200;
+                    $res -= 200;
+                } else {
+                    break;
+                }
+            }
+
+            if ($res > 0) {
+                $limit[] = $res;
+            }
+
+            foreach ($limit as $tk) {
+                $allName[$kz] = $allName1[$iz];
+                $allContacts[$kz] = $allContacts1[$iz];
+                $allAmount[$kz] = $tk;
+                $allNumberTypes[$kz] = $allNumberTypes1[$iz];
+                $allOperator[$kz] = $allOperator1[$iz];
+                $kz++;
+            }
+        } else {
+            $allName[$kz] = $allName1[$iz];
+            $allContacts[$kz] = $allContacts1[$iz];
+            $allAmount[$kz] = $allAmount1[$iz];
+            $allNumberTypes[$kz] = $allNumberTypes1[$iz];
+            $allOperator[$kz] = $allOperator1[$iz];
+            $kz++;
+        }
+    }
+
+    if (count($allAmount) == 0) {
+        return redirect()->back()->with([
+            'type' => 'danger',
+            'message' => 'No valid flexiload data found. Please check your Excel columns and rows.',
+        ]);
+    }
+
+    $flexiload_total_cost = array_sum($allAmount);
+    $user_balance = \BalanceHelper::user_available_balance($user->id);
+    $eligible_amount = $user->flexiload_limit + $flexiload_total_cost;
+
+    if ($eligible_amount >= $user_balance) {
+        return redirect()->back()->with(['type' => 'danger', 'message' => 'Insufficient balance !']);
+    }
+
+    if (!\BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_total_cost)) {
+        return redirect()->back()->with(['type' => 'danger', 'message' => 'In Sufficient Balance']);
+    }
+
+    $campaign_id = random_int(10, 90) . time() . random_int(1, 9);
+
+    try {
+        DB::beginTransaction();
+
+        for ($it = 0; $it < count($allAmount); $it++) {
+            $load_campaign = new LoadCamPending();
+            $load_campaign = $this->setUniqueSmsId($load_campaign);
+            $load_campaign->user_id = $user->id;
+
+            if (in_array($allOperator[$it], $validOperator)) {
+                $load_campaign->operator_id = $allOperator[$it];
+            } else {
+                $load_campaign->operator_id = \PhoneNumber::getOperatorNameForLoadByNumber($allContacts[$it]);
+            }
+
+            $load_campaign->campaign_id = $campaign_id;
+            $load_campaign->owner_name = $allName[$it];
+            $load_campaign->targeted_number = $allContacts[$it];
+            $load_campaign->number_type = $allNumberTypes[$it];
+            $load_campaign->campaign_type = '3';
+            $load_campaign->campaign_price = $allAmount[$it];
+
+            if ($load_campaign->operator_id == 'airtel') {
+                $op_id = 1;
+            } elseif ($load_campaign->operator_id == 'blink') {
+                $op_id = 2;
+            } elseif ($load_campaign->operator_id == 'gp') {
+                $op_id = 3;
+            } elseif ($load_campaign->operator_id == 'robi') {
+                $op_id = 4;
+            } else {
+                $op_id = 5;
+            }
+
+            $package = LoadPackage::where('operator_id', $op_id)
+                ->where('package_price', $load_campaign->campaign_price)
+                ->first();
+
+            $load_campaign->package_id = !empty($package) ? $package->id : 0;
+            $load_campaign->remarks = $remarks;
+            $load_campaign->status = '0';
+            $load_campaign->save();
+        }
+
+        $campaign = new LoadCampaignId();
+        $campaign->user_id = auth()->id();
+        $campaign->campaign_id = $campaign_id;
+        $campaign->campaign_name = $request->campaign_name ?? '';
+        $campaign->total_number = count($allContacts);
+        $campaign->total_amount = $flexiload_total_cost;
+        $campaign->save();
+
+        $user_position = $user->position;
+        $user_det = User::where('id', $user->id)->first();
+        $current_date = Carbon::now();
+
+        while ($user_position >= 1) {
+            $price_after_commission = $flexiload_total_cost - (($flexiload_total_cost * $user_det->flexiload_commission) / 100);
+
+            AccSmsBalance::create([
+                'asb_paid_by' => $user_det->create_by,
+                'asb_pay_to' => $user_det->id,
+                'asb_pay_ref' => $campaign_id,
+                'asb_credit' => '0',
+                'asb_debit' => $price_after_commission,
+                'asb_submit_time' => $current_date,
+                'asb_target_time' => $current_date,
+                'asb_pay_mode' => '5',
+                'asb_payment_status' => '1',
+                'asb_deal_type' => '2',
+                'credit_return_type' => '0',
+            ]);
+
+            $user_det = User::where('id', $user_det->create_by)->first();
+
+            if (!$user_det) {
+                break;
+            }
+
+            $user_position = $user_det->position;
+        }
+
+        DB::commit();
+
+        return redirect()->back()->with([
+            'type' => 'success',
+            'message' => 'All requests submitted successfully',
+        ]);
+    } catch (\Exception $e) {
+        DB::rollBack();
+
+        return redirect()->back()->with([
+            'type' => 'danger',
+            'message' => 'Something wrong ' . $e->getMessage(),
+        ]);
+    }
+}
