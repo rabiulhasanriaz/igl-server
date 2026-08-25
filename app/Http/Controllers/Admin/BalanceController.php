@@ -40,18 +40,16 @@ class BalanceController extends Controller
         }
 
         try{
-            AccSmsBalance::create([
-                'asb_paid_by' => Auth::user()->id,
-                'asb_pay_to' => $request->user_id,
-                'asb_pay_ref' => $request->payment_reference,
-                'asb_credit' => $request->credit_ammount,
-                'asb_debit' => '0',
-                'asb_submit_time' => Carbon::now(),
-                'asb_target_time' => $target_time,
-                'asb_pay_mode' => $request->payment_method,
-                'asb_payment_status' => '1',
-                'asb_deal_type' => '1',
-            ]);
+            \App\Helpers\BalanceHelper::addCredit(
+                Auth::id(),
+                $request->user_id,
+                $request->payment_reference,
+                $request->credit_ammount,
+                $request->payment_method,
+                1,
+                1,
+                $target_time
+            );
 
             session()->flash('type', 'success');
             session()->flash('message', 'successfully added credit balance..');
@@ -86,18 +84,16 @@ class BalanceController extends Controller
         }
 
         try{
-            AccSmsBalance::create([
-                'asb_paid_by' => Auth::user()->id,
-                'asb_pay_to' => $request->user_id,
-                'asb_pay_ref' => $request->payment_reference,
-                'asb_credit' => '0',
-                'asb_debit' => $request->debit_amount,
-                'asb_submit_time' => Carbon::now(),
-                'asb_target_time' => Carbon::now(),
-                'asb_pay_mode' => '1',
-                'asb_payment_status' => '1',
-                'asb_deal_type' => '2',
-            ]);
+            \App\Helpers\BalanceHelper::addDebit(
+                Auth::id(),
+                $request->user_id,
+                $request->payment_reference,
+                $request->debit_amount,
+                1,
+                1,
+                2,
+                Carbon::now()
+            );
 
             session()->flash('type', 'success');
             session()->flash('message', 'successfully debited balance..');
