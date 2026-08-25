@@ -145,7 +145,7 @@ class SmsDesktopSendController extends Controller
             }
 
             // $isMasking = \SmsHelper::isMasking($request->sender_id);
-            $total_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
+            $total_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
 
             if(($smsType=='unicode')){
                 $strLength = \SmsHelper::unicode_sms_count($request->message);
@@ -156,12 +156,12 @@ class SmsDesktopSendController extends Controller
                 }
             }
 
-            if (\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
+            if (\App\Helpers\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
                 $res = new stdClass();
                 $res->error = 'Warning! insufficient Balance. please recharge first...';
                 die(json_encode($res));
 
-            } elseif (\BalanceHelper::check_parents_Desktop_available_balance(Auth::id(), $sms_number, $validUniqueNumbers) == false) {
+            } elseif (\App\Helpers\BalanceHelper::check_parents_Desktop_available_balance(Auth::id(), $sms_number, $validUniqueNumbers) == false) {
                 $res = new stdClass();
                 $res->error = 'Warning! your reseller don\'t have enough balance . told him to recharge first...';
                 die(json_encode($res));
@@ -223,7 +223,7 @@ class SmsDesktopSendController extends Controller
                             'campaign_id' => $insertCampaign->id,
                             'sdp_cell_no' => $number,
                             'sdp_message' => preg_replace('/(?:\r\n|[\r\n])/', PHP_EOL, $request->message),
-                            'sdp_sms_cost' => \BalanceHelper::singleSmsDesktopCost($sms_number, $number, Auth::id()),
+                            'sdp_sms_cost' => \App\Helpers\BalanceHelper::singleSmsDesktopCost($sms_number, $number, Auth::id()),
                             'operator_id' => $operator['id'],
                             'sdp_campaign_type' => $request->schedule, /*1=instant, 2=Schedule */
                             'sdp_deal_type' => '1', /* 1=SMS, 2=Campaign */
@@ -251,20 +251,17 @@ class SmsDesktopSendController extends Controller
 
                     while ($user_position >= 1) {
                         /*get total cost*/
-                        $campaign_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user_det->id);
-                        AccSmsBalance::create([
-                            'asb_paid_by' => $user_det->create_by,
-                            'asb_pay_to' => $user_det->id,
-                            'asb_pay_ref' => $campaign_id,
-                            'asb_credit' => '0',
-                            'asb_debit' => $campaign_cost,
-                            'asb_submit_time' => Carbon::now(),
-                            'asb_target_time' => $target_time,
-                            'asb_pay_mode' => '4', /*campaign*/
-                            'asb_payment_status' => '1', /*1=paid, 2=checking*/
-                            'asb_deal_type' => '2',/*1=deposit, 2=campaign*/
-                            'credit_return_type' => '0',
-                        ]);
+                        $campaign_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user_det->id);
+                        \App\Helpers\BalanceHelper::addDebit(
+                            $user_det->create_by,
+                            $user_det->id,
+                            $campaign_id,
+                            $campaign_cost,
+                            4,
+                            1,
+                            2,
+                            $target_time
+                        );
 
                         $user_det = User::where('id', $user_det->create_by)->first();
                         $user_position = $user_det->position;
@@ -284,7 +281,7 @@ class SmsDesktopSendController extends Controller
                     return redirect()->back();*/
                     $res = new stdClass();
                     $res->success = 'Message has been sent';
-                    $res->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                    $res->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                     die(json_encode($res));
 
                 } catch (\Exception $e) {
@@ -292,7 +289,7 @@ class SmsDesktopSendController extends Controller
                     session()->flash('message', 'Something was wrong to sent sms. please contact with admin!!! ' . $e->getMessage());
                     return redirect()->back()->withInput();*/
                     $res = new stdClass();
-                    $res->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                    $res->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                     $res->error = 'Something was wrong to sent sms. please contact with admin!!!'.$e->getMessage();
                     die(json_encode($res));
                 }
@@ -346,7 +343,7 @@ class SmsDesktopSendController extends Controller
         //     die(json_encode($res));
         // } else {
 
-            $file = Input::file('sms_file');
+            $file = $request->file('sms_file');
             $filename = $request->file('sms_file')->getClientOriginalName();
 
             $fileType = \FileRead::getFileType($filename);
@@ -416,15 +413,15 @@ class SmsDesktopSendController extends Controller
 //            $operators = \PhoneNumber::countOperator($validUniqueNumbers);
 //            dd($operators);
 
-            $total_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
+            $total_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
 
 
-            if (\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
+            if (\App\Helpers\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
                 $res = new stdClass();
                 $res->error = 'Warning! you haven\'t enough balance . please recharge first...';
                 die(json_encode($res));
 
-            } elseif (\BalanceHelper::check_parents_Desktop_available_balance(Auth::id(), $sms_number, $validUniqueNumbers) == false) {
+            } elseif (\App\Helpers\BalanceHelper::check_parents_Desktop_available_balance(Auth::id(), $sms_number, $validUniqueNumbers) == false) {
                 $res = new stdClass();
                 $res->error = 'Warning! your reseller don\'t have enough balance . told him to recharge first...';
                 die(json_encode($res));
@@ -479,20 +476,17 @@ class SmsDesktopSendController extends Controller
 
                     while ($user_position >= 1) {
                         /*get total cost*/
-                        $campaign_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user_det->id);
-                        AccSmsBalance::create([
-                            'asb_paid_by' => $user_det->create_by,
-                            'asb_pay_to' => $user_det->id,
-                            'asb_pay_ref' => $campaign_id,
-                            'asb_credit' => '0',
-                            'asb_debit' => $campaign_cost,
-                            'asb_submit_time' => Carbon::now(),
-                            'asb_target_time' => $target_time,
-                            'asb_pay_mode' => '4', //*campaign*
-                            'asb_payment_status' => '1', //*1=paid, 2=checking*
-                            'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                            'credit_return_type' => '0',
-                        ]);
+                        $campaign_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user_det->id);
+                        \App\Helpers\BalanceHelper::addDebit(
+                            $user_det->create_by,
+                            $user_det->id,
+                            $campaign_id,
+                            $campaign_cost,
+                            4,
+                            1,
+                            2,
+                            $target_time
+                        );
 
                         $user_det = User::where('id', $user_det->create_by)->first();
                         $user_position = $user_det->position;
@@ -516,25 +510,25 @@ class SmsDesktopSendController extends Controller
 
                     $insertJob = new InsertDesktopSms($requestVal,$validUniqueNumbers,$total_cost,$target_time,$sms_number,$smsType,Auth::id(),$insertCampaign->id);
                         // dd($insertJob);
-                        dispatch($insertJob->onQueue('insertDynamicSms'));
+                        dispatch($insertJob->onQueue('insertDesktopSms'));
                     // $insertJob = new InsertDesktopSms($requestVal,$validUniqueNumbers,$total_cost,$target_time,$sms_number,$smsType,Auth::id(),$insertCampaign->id);
                     // // // dd($insertJob);
-                    // dispatch($insertJob->onQueue('insertDynamicSms'));
+                    // dispatch($insertJob->onQueue('insertDesktopSms'));
                     // /*$insertJob = (new InsertSms($masking,$requestVal,$validUniqueNumbers,$total_cost,$target_time,$sms_number,$smsType,Auth::id()))
                     //     ->delay(Carbon::now()->addSeconds(5));
                     // dispatch($insertJob);*/
                     $ret = new stdClass();
-                    $ret->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                    $ret->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                     $ret->success = 'Message has been sent...';
                     die(json_encode($ret));
                     // $res = new stdClass();
                     // $res->success = 'Message has been sent';
-                    // $res->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                    // $res->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                     // die(json_encode($res));
                 } catch (\Exception $e) {
                     $res = new stdClass();
                     $res->success = 'Message has been sent';
-                    $res->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                    $res->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                     die(json_encode($res));
                 }
             }
@@ -618,7 +612,7 @@ class SmsDesktopSendController extends Controller
                 }
 
                 // $isMasking = \SmsHelper::isMasking($request->sender_id);
-                $total_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
+                $total_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
 
                 if(($smsType=='unicode')){
                     $strLength = \SmsHelper::unicode_sms_count($request->message);
@@ -629,12 +623,12 @@ class SmsDesktopSendController extends Controller
                     }
                 }
 
-                if (\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
+                if (\App\Helpers\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
                     $res = new stdClass();
                     $res->error = 'Warning! you haven\'t enough balance . please recharge first...';
                     die(json_encode($res));
 
-                } elseif (\BalanceHelper::check_parents_Desktop_available_balance(Auth::id(), $sms_number, $validUniqueNumbers) == false) {
+                } elseif (\App\Helpers\BalanceHelper::check_parents_Desktop_available_balance(Auth::id(), $sms_number, $validUniqueNumbers) == false) {
                     $res = new stdClass();
                     $res->error = 'Warning! your reseller don\'t have enough balance . told him to recharge first...';
                     die(json_encode($res));
@@ -692,7 +686,7 @@ class SmsDesktopSendController extends Controller
                     //             'campaign_id' => $insertCampaign->id,
                     //             'sdp_cell_no' => $number,
                     //             'sdp_message' => $request->message,
-                    //             'sdp_sms_cost' => \BalanceHelper::singleSmsDesktopCost($sms_number, $number, Auth::id()),
+                    //             'sdp_sms_cost' => \App\Helpers\BalanceHelper::singleSmsDesktopCost($sms_number, $number, Auth::id()),
                     //             'operator_id' => $operator['id'],
                     //             'sdp_campaign_type' => $request->schedule, /*1=instant, 2=Schedule */
                     //             'sdp_deal_type' => '2', /* 1=SMS, 2=Campaign */
@@ -723,20 +717,17 @@ class SmsDesktopSendController extends Controller
 
                         while ($user_position >= 1) {
                             /*get total cost*/
-                            $campaign_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user_det->id);
-                            AccSmsBalance::create([
-                                'asb_paid_by' => $user_det->create_by,
-                                'asb_pay_to' => $user_det->id,
-                                'asb_pay_ref' => $campaign_id,
-                                'asb_credit' => '0',
-                                'asb_debit' => $campaign_cost,
-                                'asb_submit_time' => Carbon::now(),
-                                'asb_target_time' => $target_time,
-                                'asb_pay_mode' => '4', //*campaign*
-                                'asb_payment_status' => '1', //*1=paid, 2=checking*
-                                'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                                'credit_return_type' => '0',
-                            ]);
+                            $campaign_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user_det->id);
+                            \App\Helpers\BalanceHelper::addDebit(
+                                $user_det->create_by,
+                                $user_det->id,
+                                $campaign_id,
+                                $campaign_cost,
+                                4,
+                                1,
+                                2,
+                                $target_time
+                            );
 
                             $user_det = User::where('id', $user_det->create_by)->first();
                             $user_position = $user_det->position;
@@ -758,21 +749,21 @@ class SmsDesktopSendController extends Controller
                         // }
                         $insertJob = new InsertDesktopSms($requestVal,$validUniqueNumbers,$total_cost,$target_time,$sms_number,$smsType,Auth::id(),$insertCampaign->id);
                         // dd($insertJob);
-                        dispatch($insertJob->onQueue('insertDynamicSms'));
+                        dispatch($insertJob->onQueue('insertDesktopSms'));
 
                         // $insertJob = new InsertDesktopSms($requestVal,$validUniqueNumbers,$total_cost,$target_time,$sms_number,$smsType,Auth::id(),$insertCampaign->id);
-                        // dispatch($insertJob->onQueue('insertDynamicSms'));
+                        // dispatch($insertJob->onQueue('insertDesktopSms'));
 
                         $ret = new stdClass();
                         $ret->success = 'Message has been sent...';
-                        $ret->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                        $ret->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                         die(json_encode($ret));
 
                     } catch (\Exception $e) {
 
                         $res = new stdClass();
                         $res->error = 'Something was wrong to sent sms. please contact with admin!!! ...'.$e->getMessage();
-                        $res->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                        $res->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                         die(json_encode($res));
                     }
                 }
@@ -830,7 +821,7 @@ class SmsDesktopSendController extends Controller
         //     $res->error = 'Warning! can\'t find your sender id . please try again...';
         //     die(json_encode($res));
         // } else {
-            $file = Input::file('sms_file');
+            $file = $request->file('sms_file');
             $filename = $request->file('sms_file')->getClientOriginalName();
 
             $fileType = \FileRead::getFileType($filename);
@@ -938,7 +929,7 @@ class SmsDesktopSendController extends Controller
                     $sms_number = \SmsHelper::text_sms_count($final_text);
                     // dd($sms_number);
                 }
-                $smsCost = \BalanceHelper::singleSmsDesktopCost($sms_number, $validNumbers[$i], Auth::id());
+                $smsCost = \App\Helpers\BalanceHelper::singleSmsDesktopCost($sms_number, $validNumbers[$i], Auth::id());
                 
                 $total_cost = $total_cost + $smsCost;
                 
@@ -948,13 +939,13 @@ class SmsDesktopSendController extends Controller
             }
             
             
-            if (\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
+            if (\App\Helpers\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
 
                 $res = new stdClass();
                 $res->error = 'Warning! you haven\'t enough balance . please recharge first...';
                 die(json_encode($res));
 
-            } elseif (\BalanceHelper::check_dynamic_desktop_parents_available_balance(Auth::id(), $validNumbers, $validMessages) == false) {
+            } elseif (\App\Helpers\BalanceHelper::check_dynamic_desktop_parents_available_balance(Auth::id(), $validNumbers, $validMessages) == false) {
 
                 $res = new stdClass();
                 $res->error = 'Warning! your reseller don\'t have enough balance . told him to recharge first...';
@@ -1015,7 +1006,7 @@ class SmsDesktopSendController extends Controller
                             'campaign_id' => $insertCampaign->id,
                             'sdp_cell_no' => $validNumbers[$j],
                             'sdp_message' => $final_text,
-                            'sdp_sms_cost' => \BalanceHelper::singleSmsDesktopCost($sms_number, $validNumbers[$j], Auth::id()),
+                            'sdp_sms_cost' => \App\Helpers\BalanceHelper::singleSmsDesktopCost($sms_number, $validNumbers[$j], Auth::id()),
                             'operator_id' => $operator['id'],
                             'sdp_campaign_type' => $request->schedule, //*1=instant, 2=Schedule *
                             'sdp_deal_type' => '1', //* 1=SMS, 2=Campaign *
@@ -1048,7 +1039,7 @@ class SmsDesktopSendController extends Controller
 
                     while ($user_position >= 1) {
                         /*get total cost*/
-                        /*$campaign_cost = \BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, $user_det->id);*/
+                        /*$campaign_cost = \App\Helpers\BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, $user_det->id);*/
                         $campaign_cost = 0;
                         for ($i = 0; $i < count($validNumbers); $i++) {
                             $final_text = preg_replace('/(?:\r\n|[\r\n])/', PHP_EOL, $validMessages[$i]);
@@ -1060,25 +1051,22 @@ class SmsDesktopSendController extends Controller
                                 $smsType = 'text'; //text
                                 $sms_number = \SmsHelper::text_sms_count($final_text);
                             }
-                            $smsCost = \BalanceHelper::singleSmsDesktopCost($sms_number, $validNumbers[$i], $user_det->id);
+                            $smsCost = \App\Helpers\BalanceHelper::singleSmsDesktopCost($sms_number, $validNumbers[$i], $user_det->id);
                             $campaign_cost = $campaign_cost + $smsCost;
                             /*echo $i.". ".$validNumbers[$i].". ".$validMessages[$i].". ".$smsCost."<br>";*/
                         }
 
 
-                        AccSmsBalance::create([
-                            'asb_paid_by' => $user_det->create_by,
-                            'asb_pay_to' => $user_det->id,
-                            'asb_pay_ref' => $campaign_id,
-                            'asb_credit' => '0',
-                            'asb_debit' => $campaign_cost,
-                            'asb_submit_time' => Carbon::now(),
-                            'asb_target_time' => $target_time,
-                            'asb_pay_mode' => '4', //*campaign*
-                            'asb_payment_status' => '1', //*1=paid, 2=checking*
-                            'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                            'credit_return_type' => '0',
-                        ]);
+                        \App\Helpers\BalanceHelper::addDebit(
+                            $user_det->create_by,
+                            $user_det->id,
+                            $campaign_id,
+                            $campaign_cost,
+                            4,
+                            1,
+                            2,
+                            $target_time
+                        );
 
                         $user_det = User::where('id', $user_det->create_by)->first();
                         $user_position = $user_det->position;
@@ -1094,14 +1082,14 @@ class SmsDesktopSendController extends Controller
 
                     $ret = new stdClass();
                     $ret->success = 'Message has been sent...';
-                    $ret->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                    $ret->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                     die(json_encode($ret));
 
 
                 } catch (\Exception $e) {
                     $res = new stdClass();
                     $res->error = 'Something was wrong to sent sms. please contact with admin!!! ...'.$e->getMessage();
-                    $res->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                    $res->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                     die(json_encode($res));
                 }
             }
@@ -1208,14 +1196,14 @@ class SmsDesktopSendController extends Controller
             }
 
            
-            $total_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
+            $total_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
 
-            if (\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
+            if (\App\Helpers\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
                 $res = new stdClass();
                 $res->error = 'Warning! you haven\'t enough balance . please recharge first...';
                 die(json_encode($res));
 
-            } elseif (\BalanceHelper::check_parents_Desktop_available_balance(Auth::id(), $sms_number, $validUniqueNumbers) == false) {
+            } elseif (\App\Helpers\BalanceHelper::check_parents_Desktop_available_balance(Auth::id(), $sms_number, $validUniqueNumbers) == false) {
                 $res = new stdClass();
                 $res->error = 'Warning! your reseller don\'t have enough balance . told him to recharge first...';
                 die(json_encode($res));
@@ -1260,20 +1248,17 @@ class SmsDesktopSendController extends Controller
 
                     while ($user_position >= 1) {
                         /*get total cost*/
-                        $campaign_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user_det->id);
-                        AccSmsBalance::create([
-                            'asb_paid_by' => $user_det->create_by,
-                            'asb_pay_to' => $user_det->id,
-                            'asb_pay_ref' => $campaign_id,
-                            'asb_credit' => '0',
-                            'asb_debit' => $campaign_cost,
-                            'asb_submit_time' => Carbon::now(),
-                            'asb_target_time' => $target_time,
-                            'asb_pay_mode' => '4', //*campaign*
-                            'asb_payment_status' => '1', //*1=paid, 2=checking*
-                            'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                            'credit_return_type' => '0',
-                        ]);
+                        $campaign_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, $user_det->id);
+                        \App\Helpers\BalanceHelper::addDebit(
+                            $user_det->create_by,
+                            $user_det->id,
+                            $campaign_id,
+                            $campaign_cost,
+                            4,
+                            1,
+                            2,
+                            $target_time
+                        );
 
                         $user_det = User::where('id', $user_det->create_by)->first();
                         $user_position = $user_det->position;
@@ -1291,19 +1276,19 @@ class SmsDesktopSendController extends Controller
                    
 
                     $insertJob = new InsertDesktopSms($requestVal,$validUniqueNumbers,$total_cost,$target_time,$sms_number,$smsType,Auth::id(),$insertCampaign->id);
-                    dispatch($insertJob->onQueue('insertDynamicSms'));
+                    dispatch($insertJob->onQueue('insertDesktopSms'));
 
 
                     $ret = new stdClass();
                     $ret->success = 'Message has been sent...';
-                    $ret->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                    $ret->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                     die(json_encode($ret));
 
                 } catch (\Exception $e) {
 
                     $res = new stdClass();
                     $res->error = $e->getMessage().'Something was wrong to sent sms. please contact with admin!!! ...';
-                    $res->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                    $res->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                     die(json_encode($res));
                 }
             }
@@ -1393,7 +1378,7 @@ class SmsDesktopSendController extends Controller
             die(json_encode($res));
         } else {
 
-            $file = Input::file('sms_file');
+            $file = $request->file('sms_file');
             $filename = $request->file('sms_file')->getClientOriginalName();
 
             $fileType = \FileRead::getFileType($filename);
@@ -1463,7 +1448,7 @@ class SmsDesktopSendController extends Controller
                 }
             }
 
-            $total_cost = \BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
+            $total_cost = \App\Helpers\BalanceHelper::campaignDesktopTotalCost($sms_number, $validUniqueNumbers, Auth::id());
 
 
             $res = new stdClass();
@@ -1565,7 +1550,7 @@ class SmsDesktopSendController extends Controller
                 }
 
                 $isMasking = \SmsHelper::isMasking($request->sender_id);
-                $total_cost = \BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, Auth::id());
+                $total_cost = \App\Helpers\BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, Auth::id());
 
                 if(($smsType=='unicode') && ($isMasking==true)){
                     $strLength = \SmsHelper::unicode_sms_count($request->message);
@@ -1576,12 +1561,12 @@ class SmsDesktopSendController extends Controller
                     }
                 }
 
-                if (\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
+                if (\App\Helpers\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
                     $res = new stdClass();
                     $res->error = 'Warning! you haven\'t enough balance . please recharge first...';
                     die(json_encode($res));
 
-                } elseif (\BalanceHelper::check_parents_available_balance(Auth::id(), $sms_number, $validUniqueNumbers, $isMasking) == false) {
+                } elseif (\App\Helpers\BalanceHelper::check_parents_available_balance(Auth::id(), $sms_number, $validUniqueNumbers, $isMasking) == false) {
                     $res = new stdClass();
                     $res->error = 'Warning! your reseller don\'t have enough balance . told him to recharge first...';
                     die(json_encode($res));
@@ -1645,20 +1630,17 @@ class SmsDesktopSendController extends Controller
 
                         while ($user_position >= 1) {
                             /*get total cost*/
-                            $campaign_cost = \BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, $user_det->id);
-                            AccSmsBalance::create([
-                                'asb_paid_by' => $user_det->create_by,
-                                'asb_pay_to' => $user_det->id,
-                                'asb_pay_ref' => $campaign_id,
-                                'asb_credit' => '0',
-                                'asb_debit' => $campaign_cost,
-                                'asb_submit_time' => Carbon::now(),
-                                'asb_target_time' => $target_time,
-                                'asb_pay_mode' => '4', //*campaign*
-                                'asb_payment_status' => '1', //*1=paid, 2=checking*
-                                'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                                'credit_return_type' => '0',
-                            ]);
+                            $campaign_cost = \App\Helpers\BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, $user_det->id);
+                            \App\Helpers\BalanceHelper::addDebit(
+                                $user_det->create_by,
+                                $user_det->id,
+                                $campaign_id,
+                                $campaign_cost,
+                                4,
+                                1,
+                                2,
+                                $target_time
+                            );
 
                             $user_det = User::where('id', $user_det->create_by)->first();
                             $user_position = $user_det->position;
@@ -1684,14 +1666,14 @@ class SmsDesktopSendController extends Controller
 
                         $ret = new stdClass();
                         $ret->success = 'Message has been sent...';
-                        $ret->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                        $ret->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                         die(json_encode($ret));
 
                     } catch (\Exception $e) {
 
                         $res = new stdClass();
                         $res->error = 'Something was wrong to sent sms. please contact with admin!!! ...';
-                        $res->current_balance = number_format(\BalanceHelper::user_available_balance(Auth::id()), 2);
+                        $res->current_balance = number_format(\App\Helpers\BalanceHelper::user_available_balance(Auth::id()), 2);
                         die(json_encode($res));
                     }
                 }
@@ -1780,7 +1762,7 @@ if (!$checkSenderId) {
     return redirect()->back()->withInput();
 } else {
 
-    $file = Input::file('sms_file');
+    $file = $request->file('sms_file');
     $filename = $request->file('sms_file')->getClientOriginalName();
 
     $fileType = \FileRead::getFileType($filename);
@@ -1832,14 +1814,14 @@ if (!$checkSenderId) {
     }
 
     $isMasking = \SmsHelper::isMasking($request->sender_id);
-    $total_cost = \BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, Auth::id());
+    $total_cost = \App\Helpers\BalanceHelper::campaignTotalCost($sms_number, $validUniqueNumbers, $isMasking, Auth::id());
 
-    if (\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
+    if (\App\Helpers\BalanceHelper::user_available_balance(Auth::id()) < $total_cost) {
         $res = new stdClass();
         $res->error = 'Failed to create directory';
         die(json_encode($res));
 
-    } elseif (\BalanceHelper::check_parents_available_balance(Auth::id(), $total_cost) == false) {
+    } elseif (\App\Helpers\BalanceHelper::check_parents_available_balance(Auth::id(), $total_cost) == false) {
         session()->flash('type', 'danger');
         session()->flash('message', 'Warning! your reseller don\'t have enough balance. told him to recharge first...');
         return redirect()->back();
@@ -1850,6 +1832,3 @@ if (!$checkSenderId) {
 }
 
  */
-
-
-
