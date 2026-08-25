@@ -144,20 +144,19 @@ public function acceptDynamicCampaigns($campaign_id)
 
                     if (!empty($pre_acc_sms_balance)) {
                         /*refund cost*/
-                        AccSmsBalance::create([
-                            'asb_paid_by' => $user_det->create_by,
-                            'asb_pay_to' => $user_det->id,
-                            'asb_pay_ref' => $campaign_details->sci_campaign_id,
-                            'asb_credit' => $pre_acc_sms_balance->asb_debit,
-                            'asb_debit' => 0,
-                            'asb_submit_time' => Carbon::now(),
-                            'asb_target_time' => Carbon::now(),
-                            'asb_pay_mode' => '6', /*campaign refund*/
-                            'asb_payment_status' => '1', /*1=paid, 2=checking*/
-                            'asb_deal_type' => '1',/*1=deposit, 2=campaign*/
-                            'credit_return_type' => '0',
-                        ]);
+                        \App\Helpers\BalanceHelper::addCredit(
+                            $user_det->create_by,
+                            $user_det->id,
+                            $campaign_details->sci_campaign_id,
+                            $pre_acc_sms_balance->asb_debit,
+                            6,
+                            1,
+                            1,
+                            Carbon::now(),
+                            0
+                        );
                     }
+
 
                     $user_det = User::where('id', $user_det->create_by)->first();
                     $user_position = $user_det->position;
@@ -223,19 +222,17 @@ public function acceptDynamicCampaigns($campaign_id)
 
                     if (!empty($pre_acc_sms_balance)) {
                         /*refund cost*/
-                        AccSmsBalance::create([
-                            'asb_paid_by' => $user_det->create_by,
-                            'asb_pay_to' => $user_det->id,
-                            'asb_pay_ref' => $campaign_details->sci_campaign_id,
-                            'asb_credit' => $pre_acc_sms_balance->asb_debit,
-                            'asb_debit' => 0,
-                            'asb_submit_time' => Carbon::now(),
-                            'asb_target_time' => Carbon::now(),
-                            'asb_pay_mode' => '6', /*campaign refund*/
-                            'asb_payment_status' => '1', /*1=paid, 2=checking*/
-                            'asb_deal_type' => '1',/*1=deposit, 2=campaign*/
-                            'credit_return_type' => '0',
-                        ]);
+                        \App\Helpers\BalanceHelper::addCredit(
+                            $user_det->create_by,
+                            $user_det->id,
+                            $campaign_details->sci_campaign_id,
+                            $pre_acc_sms_balance->asb_debit,
+                            6,
+                            1,
+                            1,
+                            Carbon::now(),
+                            0
+                        );
                     }
 
                     $user_det = User::where('id', $user_det->create_by)->first();
