@@ -8,7 +8,6 @@ use App\Model\UserDetail;
 use App\Model\SenderIdUserDefault;
 use App\Model\SmsCamPending;
 use App\Jobs\InsertSms;
-use App\Model\AccSmsBalance;
 use App\Model\AccUserCreditHistory;
 use App\Model\PhonebookCampaignCategory;
 use App\Model\PhonebookCampaignContact;
@@ -25,6 +24,9 @@ use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Helpers\PhoneNumber;
+use App\Helpers\BalanceHelper;
+use App\Helpers\SmsHelper;
 
 class LoginController extends Controller
 {
@@ -284,13 +286,13 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             // ----------------------------
             // CHECK SMS TYPE
             // ----------------------------
-            $isUnicode = \SmsHelper::is_unicode($message);
+            $isUnicode = SmsHelper::is_unicode($message);
 
             if ($isUnicode) {
-                $sms_number = \SmsHelper::unicode_sms_count($message);
+                $sms_number = SmsHelper::unicode_sms_count($message);
                 $smsType = 'unicode';
             } else {
-                $sms_number = \SmsHelper::text_sms_count($message);
+                $sms_number = SmsHelper::text_sms_count($message);
                 $smsType = 'text';
             }
 
@@ -298,9 +300,9 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             // VALIDATE PHONE NUMBER
             // ----------------------------
             $validNumbers = [];
-            $number = \PhoneNumber::addNumberPrefix($cellphone);
+            $number = PhoneNumber::addNumberPrefix($cellphone);
 
-            if (\PhoneNumber::isValid($number)) {
+            if (PhoneNumber::isValid($number)) {
                 $validNumbers[] = $number;
             }
 
@@ -320,7 +322,7 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             // ----------------------------
             // USER BALANCE CHECK
             // ----------------------------
-            $userBalance = \BalanceHelper::user_available_balance($user->id);
+            $userBalance = BalanceHelper::user_available_balance($user->id);
 
             if ($userBalance < $total_cost) {
                 session(['otp_error_message' => 'Insufficient balance. Please recharge your account.']);
@@ -336,9 +338,9 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             // ----------------------------
             // BROWSER INFO
             // ----------------------------
-            $browser_info = \SmsHelper::getBrowser();
+            $browser_info = SmsHelper::getBrowser();
             $br = $browser_info['name'] . " | " . $browser_info['version'];
-            $os = \SmsHelper::os_info($_SERVER['HTTP_USER_AGENT']);
+            $os = SmsHelper::os_info($_SERVER['HTTP_USER_AGENT']);
             $br .= ' | ' . $os;
 
             // ----------------------------
@@ -364,7 +366,7 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             // INSERT PENDING SMS
             // ----------------------------
             foreach ($validUniqueNumbers as $number) {
-                $operator = \PhoneNumber::checkOperator($number);
+                $operator = PhoneNumber::checkOperator($number);
                 
                 SmsCamPending::create([
                     'user_id' => $user->id,
@@ -393,19 +395,17 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             $user_det = User::where('id', $user->id)->first();
 
             while ($user_position >= 1) {
-                AccSmsBalance::create([
-                    'asb_paid_by' => $user_det->create_by,
-                    'asb_pay_to' => $user_det->id,
-                    'asb_pay_ref' => $campaign_id,
-                    'asb_credit' => '0',
-                    'asb_debit' => $total_cost,
-                    'asb_submit_time' => Carbon::now(),
-                    'asb_target_time' => $target_time,
-                    'asb_pay_mode' => '4',
-                    'asb_payment_status' => '1',
-                    'asb_deal_type' => '2',
-                    'credit_return_type' => '0',
-                ]);
+                BalanceHelper::addDebit(
+                    $user_det->create_by,
+                    $user_det->id,
+                    $campaign_id,
+                    $total_cost,
+                    4,
+                    1,
+                    2,
+                    $target_time,
+                    0
+                );
 
                 $user_det = User::where('id', $user_det->create_by)->first();
                 if ($user_det) {
@@ -618,21 +618,21 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
         $cellphone = $user->cellphone;
 
         // CHECK SMS TYPE (SAME AS OTP)
-        $isUnicode = \SmsHelper::is_unicode($message);
+        $isUnicode = SmsHelper::is_unicode($message);
 
         if ($isUnicode) {
-            $sms_number = \SmsHelper::unicode_sms_count($message);
+            $sms_number = SmsHelper::unicode_sms_count($message);
             $smsType = 'unicode';
         } else {
-            $sms_number = \SmsHelper::text_sms_count($message);
+            $sms_number = SmsHelper::text_sms_count($message);
             $smsType = 'text';
         }
 
         // VALIDATE PHONE NUMBER (SAME AS OTP)
         $validNumbers = [];
-        $number = \PhoneNumber::addNumberPrefix($cellphone);
+        $number = PhoneNumber::addNumberPrefix($cellphone);
 
-        if (\PhoneNumber::isValid($number)) {
+        if (PhoneNumber::isValid($number)) {
             $validNumbers[] = $number;
         }
 
@@ -649,7 +649,7 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
         // ----------------------------
         // BALANCE CHECK - SHOWS ERROR IF INSUFFICIENT
         // ----------------------------
-        $userBalance = \BalanceHelper::user_available_balance($user->id);
+        $userBalance = BalanceHelper::user_available_balance($user->id);
         
         \Log::info('Forgot Password Balance Check:', [
             'user_id' => $user->id,
@@ -667,9 +667,9 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
         $target_time = Carbon::now();
 
         // BROWSER INFO (SAME AS OTP)
-        $browser_info = \SmsHelper::getBrowser();
+        $browser_info = SmsHelper::getBrowser();
         $br = $browser_info['name'] . " | " . $browser_info['version'];
-        $os = \SmsHelper::os_info($_SERVER['HTTP_USER_AGENT']);
+        $os = SmsHelper::os_info($_SERVER['HTTP_USER_AGENT']);
         $br .= ' | ' . $os;
 
         // CREATE CAMPAIGN (SAME AS OTP)
@@ -691,7 +691,7 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
 
         // INSERT PENDING SMS (SAME AS OTP)
         foreach ($validUniqueNumbers as $number) {
-            $operator = \PhoneNumber::checkOperator($number);
+            $operator = PhoneNumber::checkOperator($number);
             
             SmsCamPending::create([
                 'user_id' => $user->id,
@@ -718,19 +718,17 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
         $user_det = User::where('id', $user->id)->first();
 
         while ($user_position >= 1) {
-            AccSmsBalance::create([
-                'asb_paid_by' => $user_det->create_by,
-                'asb_pay_to' => $user_det->id,
-                'asb_pay_ref' => $campaign_id,
-                'asb_credit' => '0',
-                'asb_debit' => $total_cost,
-                'asb_submit_time' => Carbon::now(),
-                'asb_target_time' => $target_time,
-                'asb_pay_mode' => '4',
-                'asb_payment_status' => '1',
-                'asb_deal_type' => '2',
-                'credit_return_type' => '0',
-            ]);
+            BalanceHelper::addDebit(
+                $user_det->create_by,
+                $user_det->id,
+                $campaign_id,
+                $total_cost,
+                4,
+                1,
+                2,
+                $target_time,
+                0
+            );
 
             $user_det = User::where('id', $user_det->create_by)->first();
             if ($user_det) {

@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Helpers\BalanceHelper;
 
 class HomeController extends Controller
 {
@@ -79,7 +80,7 @@ class HomeController extends Controller
                     }
 
                 }
-        $balance_bd = \BalanceHelper::user_available_balance(Auth::id());
+        $balance_bd = BalanceHelper::user_available_balance(Auth::id());
 
         $data['sms_credit'] = cache('sms_credit', function(){
           return AccSmsRate::with('operator')->where('user_id', Auth::id())->get();

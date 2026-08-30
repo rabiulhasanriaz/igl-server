@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Importer;
 use stdClass;
+use App\Helpers\PhoneNumber;
 
 class SmsSendController extends Controller
 {
@@ -118,8 +119,8 @@ class SmsSendController extends Controller
             $allContacts = explode(PHP_EOL, $request->cell_phone);
             $validNumbers = array();
             foreach ($allContacts as $contact) {
-                $number = \PhoneNumber::addNumberPrefix($contact);
-                if (\PhoneNumber::isValid($number)) {
+                $number = PhoneNumber::addNumberPrefix($contact);
+                if (PhoneNumber::isValid($number)) {
                     $validNumbers[] = $number;
                 }
             }
@@ -215,7 +216,7 @@ class SmsSendController extends Controller
                     }
 
                     foreach ($validUniqueNumbers as $value) {
-                        $op = \PhoneNumber::checkOperator($value);
+                        $op = PhoneNumber::checkOperator($value);
                     }
 
                     $insertCampaign = SmsCampaignId::create([
@@ -239,7 +240,7 @@ class SmsSendController extends Controller
                     ]);
 
                     foreach ($validUniqueNumbers as $number) {
-                        $operator = \PhoneNumber::checkOperator($number);
+                        $operator = PhoneNumber::checkOperator($number);
 
                         $messageWithoutEmojis = preg_replace('/[\x{1F600}-\x{1F64F}]|[\x{1F300}-\x{1F5FF}]|[\x{1F680}-\x{1F6FF}]|[\x{2600}-\x{26FF}]|[\x{2700}-\x{27BF}]/u', '', $request->message);
 
@@ -273,7 +274,7 @@ class SmsSendController extends Controller
                     while ($user_position >= 1) {
                         /*get total cost*/
                         foreach ($validUniqueNumbers as $value) {
-                            $op = \PhoneNumber::checkOperator($value);
+                            $op = PhoneNumber::checkOperator($value);
                         }
 
                         
@@ -390,8 +391,8 @@ class SmsSendController extends Controller
 
             $validNumbers = array();
             foreach ($allContacts as $contact) {
-                $number = \PhoneNumber::addNumberPrefix($contact);
-                if (\PhoneNumber::isValid($number)) {
+                $number = PhoneNumber::addNumberPrefix($contact);
+                if (PhoneNumber::isValid($number)) {
                     $validNumbers[] = $number;
                 }
             }
@@ -923,8 +924,8 @@ class SmsSendController extends Controller
             $getValidMessageSerial = 0;
             foreach ($allContacts as $contact) {
 
-                $number = \PhoneNumber::addNumberPrefix($contact);
-                if (\PhoneNumber::isValid($number)) {
+                $number = PhoneNumber::addNumberPrefix($contact);
+                if (PhoneNumber::isValid($number)) {
                     $validNumbers[] = $number;
                     $validMessages[] = $allMessages[$getValidMessageSerial];
                 }
@@ -1022,7 +1023,7 @@ class SmsSendController extends Controller
                     $dataForInsert = array();
                     $serial = 0;
                     for ($j = 0; $j < count($validNumbers); $j++) {
-                        $operator = \PhoneNumber::checkOperator($validNumbers[$j]);
+                        $operator = PhoneNumber::checkOperator($validNumbers[$j]);
                         $full_text = preg_replace('/(?:\r\n|[\r\n])/', PHP_EOL, $validMessages[$j]);
                         if (\SmsHelper::is_unicode($full_text)) {
                             $smsType = 'unicode'; //unicode
@@ -1474,8 +1475,8 @@ class SmsSendController extends Controller
 
             $validNumbers = array();
             foreach ($allContacts as $contact) {
-                $number = \PhoneNumber::addNumberPrefix($contact);
-                if (\PhoneNumber::isValid($number)) {
+                $number = PhoneNumber::addNumberPrefix($contact);
+                if (PhoneNumber::isValid($number)) {
                     $validNumbers[] = $number;
                 }
             }

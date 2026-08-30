@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 use GuzzleHttp\Client;
+use App\Helpers\BalanceHelper;
 
 class BalanceController extends Controller
 {
@@ -20,7 +21,7 @@ class BalanceController extends Controller
     public function cdtCreate()
     {
         $resellers = User::where(['create_by'=> Auth::id()])->orderBy('company_name','asc')->get();
-        $paymentable_balance = \BalanceHelper::reseller_paymentable_balance(Auth::id());
+        $paymentable_balance = BalanceHelper::reseller_paymentable_balance(Auth::id());
 
         return view('reseller.balance.add_fund_credit', compact('resellers', 'paymentable_balance'));
     }
@@ -62,7 +63,7 @@ class BalanceController extends Controller
             $target_time = date("Y-m-d h:i:s",strtotime($request->target_time));
         }
 
-        if($amount>\BalanceHelper::reseller_paymentable_balance(Auth::id())){
+        if($amount>BalanceHelper::reseller_paymentable_balance(Auth::id())){
             session()->flash('type', 'danger');
             session()->flash('message', 'Warning ! You can\'t pay more then your paymentable balance....!');
 
@@ -70,7 +71,7 @@ class BalanceController extends Controller
         }
 
         // Employee Commission calculation Editing start
-           /* $data = \BalanceHelper::get_employee_commission($request->user_id, $request->credit_ammount);
+           /* $data = BalanceHelper::get_employee_commission($request->user_id, $request->credit_ammount);
                
                $add_commission = EmployeeUserCommission::create([
                    'eu_id' => $data['employee_id'],
@@ -85,27 +86,31 @@ class BalanceController extends Controller
             DB::transaction(function () use ($request, $target_time) {
             
             $amount = str_replace(',','',$request->credit_ammount);
-                $added_credit = AccSmsBalance::create([
-                    'asb_paid_by' => Auth::user()->id,
-                    'asb_pay_to' => $request->user_id,
-                    'asb_pay_ref' => $request->payment_reference,
-                    'asb_credit' => $amount,
-                    'asb_debit' => '0',
-                    'asb_submit_time' => Carbon::now(),
-                    'asb_target_time' => $target_time,
-                    'asb_pay_mode' => $request->payment_method,
-                    'asb_payment_status' => '1',
-                    'asb_deal_type' => '1',
-                ]);
+                BalanceHelper::addCredit(
+                    Auth::user()->id,
+                    $request->user_id,
+                    $request->payment_reference,
+                    $amount,
+                    $request->payment_method,
+                    1,
+                    1,
+                    $target_time
+                );
 
-               $data = \BalanceHelper::get_employee_commission($request->user_id, $amount);
+                $added_credit = AccSmsBalance::where('asb_pay_to', $request->user_id)
+                    ->where('asb_pay_ref', $request->payment_reference)
+                    ->where('asb_credit', $amount)
+                    ->orderBy('id', 'desc')
+                    ->first();
+
+               $data = BalanceHelper::get_employee_commission($request->user_id, $amount);
                $comission = User::where('id',$request->user_id)
                                 ->first();
                 $total = ($amount* $comission->flexi_emp_comission)/100;
                if ( $data != 0 ){
                    $add_commission = EmployeeUserCommission::create([
                        'eu_id' => $comission->employee_user_id,
-                       'eu_ref_id' => $added_credit->id,
+                       'eu_ref_id' => $added_credit ? $added_credit->id : 0,
                        'euc_credit' => $total,
                        'euc_debit' => 0,
                        'euc_status' => 1,
@@ -174,7 +179,7 @@ class BalanceController extends Controller
             session()->flash('message', 'Warning! You can\'t get balance from user who is not under you....!');
             return redirect()->back();
         }
-        elseif ($request->debit_amount>\BalanceHelper::user_available_balance($request->user_id)){
+        elseif ($request->debit_amount>BalanceHelper::user_available_balance($request->user_id)){
             session()->flash('type', 'danger');
             session()->flash('message', 'Warning ! You can\'t withdraw more then this user balance....!');
 
@@ -184,25 +189,29 @@ class BalanceController extends Controller
         try{
             DB::transaction(function () use ($request) {
                 
-                $added_debit = AccSmsBalance::create([
-                    'asb_paid_by' => Auth::user()->id,
-                    'asb_pay_to' => $request->user_id,
-                    'asb_pay_ref' => $request->payment_reference,
-                    'asb_credit' => '0',
-                    'asb_debit' => $request->debit_amount,
-                    'asb_submit_time' => Carbon::now(),
-                    'asb_target_time' => Carbon::now(),
-                    'asb_pay_mode' => '1',
-                    'asb_payment_status' => '1',
-                    'asb_deal_type' => '2',
-                ]);
+                BalanceHelper::addDebit(
+                    Auth::user()->id,
+                    $request->user_id,
+                    $request->payment_reference,
+                    $request->debit_amount,
+                    1,
+                    1,
+                    2,
+                    Carbon::now()
+                );
 
-                $data = \BalanceHelper::get_employee_commission($request->user_id, $request->debit_amount);
+                $added_debit = AccSmsBalance::where('asb_pay_to', $request->user_id)
+                    ->where('asb_pay_ref', $request->payment_reference)
+                    ->where('asb_debit', $request->debit_amount)
+                    ->orderBy('id', 'desc')
+                    ->first();
+
+                $data = BalanceHelper::get_employee_commission($request->user_id, $request->debit_amount);
                 
                 if ( $data != 0 ){
                     $removed_commission = EmployeeUserCommission::create([
                     'eu_id' => $data['employee_id'],
-                    'eu_ref_id' => $added_debit->id,
+                    'eu_ref_id' => $added_debit ? $added_debit->id : 0,
                     'euc_credit' => 0,
                     'euc_debit' => $data['commission_amount'],
                     'euc_status' => 2,
