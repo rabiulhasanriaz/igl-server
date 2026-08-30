@@ -8,7 +8,6 @@ use App\Model\LoadCampaign30day;
 use App\Model\LoadCampaign;
 use App\Model\Operator;
 use App\Model\User;
-use App\Model\AccSmsBalance;
 use App\Model\LoadPackage;
 use App\Model\LoadFlexibooksData;
 use App\Model\LoadCamPending;
@@ -22,6 +21,9 @@ use Illuminate\Support\Facades\Input;
 use stdClass;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Response;
+use App\Helpers\BalanceHelper;
+use App\Helpers\PhoneNumber;
+use App\Helpers\FileRead;
 
 
 class LoadController extends Controller
@@ -50,18 +52,18 @@ class LoadController extends Controller
             $flexipin = $request->flexipin;
             $targeted_number = $request->targeted_number;
             $operator = $request->operator;
-            $targeted_number = \PhoneNumber::addNumberPrefix($targeted_number);
+            $targeted_number = PhoneNumber::addNumberPrefix($targeted_number);
             $number_type = $request->number_type;
             $campaign_id = random_int(10, 90) . time() . random_int(1, 9);
             $remarks = $request->remarks;
 
 
-            if (!\PhoneNumber::isValid($targeted_number)) {
+            if (!PhoneNumber::isValid($targeted_number)) {
                 return redirect()->back()->with(['type' => 'danger', 'message' => 'Invalid Number']);
             }
 
             $user = auth()->user();
-            $user_balance = \BalanceHelper::user_available_balance($user->id);
+            $user_balance = BalanceHelper::user_available_balance($user->id);
             $flexiload_price = $request->amount;
 
             if($operator == 'airtel'){
@@ -147,7 +149,7 @@ class LoadController extends Controller
                 return redirect()->back()->with(['type' => 'danger', 'message' => 'Insufficient balance !']);
             }
 
-            if (\BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_price)) {
+            if (BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_price)) {
 
                 DB::beginTransaction();
 
@@ -158,7 +160,7 @@ class LoadController extends Controller
                 if ($request->operator != '') {
                 $load_campaign->operator_id = $request->operator;
                 }else {
-                    $load_campaign->operator_id = \PhoneNumber::getOperatorNameForLoadByNumber($targeted_number);
+                    $load_campaign->operator_id = PhoneNumber::getOperatorNameForLoadByNumber($targeted_number);
                 }
                 $load_campaign->campaign_id = $campaign_id;
                 $load_campaign->targeted_number = $targeted_number;
@@ -191,25 +193,27 @@ class LoadController extends Controller
 
                 $user_det = User::where('id', $user_id)->first();
                 $current_date = Carbon::now();
-                while ($user_position >= 1) {
+                while ($user_position >= 1 && $user_det) {
                     /*get total cost against each reseller*/
                     $price_after_commission = $flexiload_price - (($flexiload_price * $user_det->flexiload_commission) / 100);
 
-                    AccSmsBalance::create([
-                        'asb_paid_by' => $user_det->create_by,
-                        'asb_pay_to' => $user_det->id,
-                        'asb_pay_ref' => $campaign_id,
-                        'asb_credit' => '0',
-                        'asb_debit' => $price_after_commission,
-                        'asb_submit_time' => $current_date,
-                        'asb_target_time' => $current_date,
-                        'asb_pay_mode' => '5', //*Flexiload*
-                        'asb_payment_status' => '1', //*1=paid, 2=checking*
-                        'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                        'credit_return_type' => '0',
-                    ]);
+                    BalanceHelper::addDebit(
+                        $user_det->create_by,
+                        $user_det->id,
+                        $campaign_id,
+                        $price_after_commission,
+                        5,
+                        1,
+                        2,
+                        $current_date,
+                        0
+                    );
                     $user_det = User::where('id', $user_det->create_by)->first();
-                    $user_position = $user_det->position;
+                    if ($user_det) {
+                        $user_position = $user_det->position;
+                    } else {
+                        break;
+                    }
                 }
                 DB::commit();
 
@@ -235,7 +239,7 @@ class LoadController extends Controller
         } else {
             $filename = $request->file('sms_file')->getClientOriginalName();
 
-            $fileType = \FileRead::getFileType($filename);
+            $fileType = FileRead::getFileType($filename);
             $allContacts = array();
             try {
                 if ($fileType == "Excel") {
@@ -256,8 +260,8 @@ class LoadController extends Controller
 
             /*$validNumbers = array();
             foreach ($allContacts as $contact) {
-                $number = \PhoneNumber::addNumberPrefix($contact);
-                if (\PhoneNumber::isValid($number)) {
+                $number = PhoneNumber::addNumberPrefix($contact);
+                if (PhoneNumber::isValid($number)) {
                     $validNumbers[] = $number;
                 }
             }*/
@@ -315,14 +319,14 @@ class LoadController extends Controller
         }
 
 
-        $user_balance = \BalanceHelper::user_available_balance($user->id);
+        $user_balance = BalanceHelper::user_available_balance($user->id);
         $eligible_amount = $user->flexiload_limit + $flexiload_total_cost;
 
         if ($eligible_amount >= $user_balance) {
             return redirect()->back()->with(['type' => 'danger', 'message' => 'Insufficient balance !']);
         }
 
-        if (\BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_total_cost)) {
+        if (BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_total_cost)) {
             $campaign_id = random_int(10, 90) . time() . random_int(1, 9);
             try {
                 DB::beginTransaction();
@@ -336,7 +340,7 @@ class LoadController extends Controller
                     if ($contact->operator != '') {
                         $load_campaign->operator_id = $contact->operator;
                     }else{
-                        $load_campaign->operator_id = \PhoneNumber::getOperatorNameForLoadByNumber($contact->number);
+                        $load_campaign->operator_id = PhoneNumber::getOperatorNameForLoadByNumber($contact->number);
                     }
                     $load_campaign->campaign_id = $campaign_id;
                     $load_campaign->targeted_number = $contact->number;
@@ -373,25 +377,27 @@ class LoadController extends Controller
 
                 $user_det = User::where('id', $user_id)->first();
                 $current_date = Carbon::now();
-                while ($user_position >= 1) {
+                while ($user_position >= 1 && $user_det) {
                     /*get total cost against each reseller*/
                     $price_after_commission = $flexiload_total_cost - (($flexiload_total_cost * $user_det->flexiload_commission) / 100);
 
-                    AccSmsBalance::create([
-                        'asb_paid_by' => $user_det->create_by,
-                        'asb_pay_to' => $user_det->id,
-                        'asb_pay_ref' => $campaign_id,
-                        'asb_credit' => '0',
-                        'asb_debit' => $price_after_commission,
-                        'asb_submit_time' => $current_date,
-                        'asb_target_time' => $current_date,
-                        'asb_pay_mode' => '5', //*Flexiload*
-                        'asb_payment_status' => '1', //*1=paid, 2=checking*
-                        'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                        'credit_return_type' => '0',
-                    ]);
+                    BalanceHelper::addDebit(
+                        $user_det->create_by,
+                        $user_det->id,
+                        $campaign_id,
+                        $price_after_commission,
+                        5,
+                        1,
+                        2,
+                        $current_date,
+                        0
+                    );
                     $user_det = User::where('id', $user_det->create_by)->first();
-                    $user_position = $user_det->position;
+                    if ($user_det) {
+                        $user_position = $user_det->position;
+                    } else {
+                        break;
+                    }
                 }
 
             } catch (\Exception $e) {
@@ -426,19 +432,19 @@ class LoadController extends Controller
             $flexipin = $request->flexipin;
             $package_id = $request->package_id;
             $targeted_number = $request->targeted_number;
-            $targeted_number = \PhoneNumber::addNumberPrefix($targeted_number);
+            $targeted_number = PhoneNumber::addNumberPrefix($targeted_number);
             $number_type = $request->number_type;
             $campaign_id = random_int(10, 90) . time() . random_int(1, 9);
             $remarks = $request->remarks;
 
-            $op = \PhoneNumber::checkOperator($targeted_number)->id;
+            $op = PhoneNumber::checkOperator($targeted_number)->id;
 
-            if (!\PhoneNumber::isValid($targeted_number)) {
+            if (!PhoneNumber::isValid($targeted_number)) {
                 return redirect()->back()->with(['type' => 'danger', 'message' => 'Invalid Number', 'op' => $op]);
             }
 
             $user = auth()->user();
-            $user_balance = \BalanceHelper::user_available_balance($user->id);
+            $user_balance = BalanceHelper::user_available_balance($user->id);
             $flexiload_price = LoadPackage::where('id', $package_id)->first()->package_price;
 
             // Checking flexipin
@@ -453,7 +459,7 @@ class LoadController extends Controller
             }
 
 
-            if (\BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_price)) {
+            if (BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_price)) {
                 DB::beginTransaction();
 
 
@@ -463,7 +469,7 @@ class LoadController extends Controller
                 if ($request->operator != '') {
                 $load_campaign->operator_id = $request->operator;
                 }else {
-                    $load_campaign->operator_id = \PhoneNumber::getOperatorNameForLoadByNumber($targeted_number);
+                    $load_campaign->operator_id = PhoneNumber::getOperatorNameForLoadByNumber($targeted_number);
                 }
                 $load_campaign->campaign_id = $campaign_id;
                 $load_campaign->targeted_number = $targeted_number;
@@ -494,25 +500,27 @@ class LoadController extends Controller
 
                 $user_det = User::where('id', $user_id)->first();
                 $current_date = Carbon::now();
-                while ($user_position >= 1) {
+                while ($user_position >= 1 && $user_det) {
                     /*get total cost against each reseller*/
                     $price_after_commission = $flexiload_price - (($flexiload_price * $user_det->flexiload_commission) / 100);
 
-                    AccSmsBalance::create([
-                        'asb_paid_by' => $user_det->create_by,
-                        'asb_pay_to' => $user_det->id,
-                        'asb_pay_ref' => $campaign_id,
-                        'asb_credit' => '0',
-                        'asb_debit' => $price_after_commission,
-                        'asb_submit_time' => $current_date,
-                        'asb_target_time' => $current_date,
-                        'asb_pay_mode' => '5', //*Flexiload*
-                        'asb_payment_status' => '1', //*1=paid, 2=checking*
-                        'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                        'credit_return_type' => '0',
-                    ]);
+                    BalanceHelper::addDebit(
+                        $user_det->create_by,
+                        $user_det->id,
+                        $campaign_id,
+                        $price_after_commission,
+                        5,
+                        1,
+                        2,
+                        $current_date,
+                        0
+                    );
                     $user_det = User::where('id', $user_det->create_by)->first();
-                    $user_position = $user_det->position;
+                    if ($user_det) {
+                        $user_position = $user_det->position;
+                    } else {
+                        break;
+                    }
                 }
                 DB::commit();
 
@@ -576,7 +584,7 @@ class LoadController extends Controller
         $file = Input::file('sms_file');
         $filename = $request->file('sms_file')->getClientOriginalName();
 
-        $fileType = \FileRead::getFileType($filename);
+        $fileType = FileRead::getFileType($filename);
         $allName1 = array();
         $allContacts1 = array();
         $allAmount1 = array();
@@ -602,7 +610,7 @@ class LoadController extends Controller
 
             foreach ($fileContents as $fileContent) {
                 $allName1[$f] = (string)$fileContent[$dynamic_name_column];
-                $allContacts1[$f] = \PhoneNumber::addNumberPrefix((string)(abs((int)$fileContent[$dynamic_number_column])));
+                $allContacts1[$f] = PhoneNumber::addNumberPrefix((string)(abs((int)$fileContent[$dynamic_number_column])));
                 $allAmount1[$f] = (int)$fileContent[$dynamic_amount_column];
                 $allNumberTypes1[$f] = (int)$fileContent[$dynamic_number_type_column];
                 $allOperator1[$f] = (string)$fileContent[$dynamic_number_operator_column];
@@ -680,7 +688,7 @@ class LoadController extends Controller
                     // dd(count($limit));
 
                     foreach($limit as $tk){
-                        if( !\PhoneNumber::isValid($allContacts1[$iz]) ) continue;
+                        if( !PhoneNumber::isValid($allContacts1[$iz]) ) continue;
                         $allName[$kz] = $allName1[$iz];
                         $allContacts[$kz] = $allContacts1[$iz];
                         $allAmount[$kz] = $tk;
@@ -693,7 +701,7 @@ class LoadController extends Controller
                     // dd($allAmount);
 
                 }else{
-                    if( !\PhoneNumber::isValid($allContacts1[$iz]) ) continue;
+                    if( !PhoneNumber::isValid($allContacts1[$iz]) ) continue;
                     $allName[$kz] = $allName1[$iz];
                     $allContacts[$kz] = $allContacts1[$iz];
                     $allAmount[$kz] = $allAmount1[$iz];
@@ -706,13 +714,13 @@ class LoadController extends Controller
 
 
             $flexiload_total_cost = array_sum($allAmount);
-            $user_balance = \BalanceHelper::user_available_balance($user->id);
+            $user_balance = BalanceHelper::user_available_balance($user->id);
             $eligible_amount = $user->flexiload_limit + $flexiload_total_cost;
 
             if ($eligible_amount >= $user_balance) {
                 return redirect()->back()->with(['type' => 'danger', 'message' => 'Insufficient balance !']);
             }
-            if (\BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_total_cost)) {
+            if (BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_total_cost)) {
                 $campaign_id = random_int(10, 90) . time() . random_int(1, 9);
                 try {
                     DB::beginTransaction();
@@ -725,7 +733,7 @@ class LoadController extends Controller
                         if (in_array($allOperator[$it],$validOperator)) {
                             $load_campaign->operator_id = $allOperator[$it];
                         }else{
-                            $load_campaign->operator_id = \PhoneNumber::getOperatorNameForLoadByNumber($allContacts[$it]);
+                            $load_campaign->operator_id = PhoneNumber::getOperatorNameForLoadByNumber($allContacts[$it]);
                         }
                         $load_campaign->campaign_id = $campaign_id;
                         $load_campaign->owner_name = $allName[$it];
@@ -779,25 +787,27 @@ class LoadController extends Controller
                     $user_det = User::where('id', $user_id)->first();
                     $current_date = Carbon::now();
 
-                    while ($user_position >= 1) {
+                    while ($user_position >= 1 && $user_det) {
                         /*get total cost against each reseller*/
                         $price_after_commission = $flexiload_total_cost - (($flexiload_total_cost * $user_det->flexiload_commission) / 100);
 
-                        AccSmsBalance::create([
-                            'asb_paid_by' => $user_det->create_by,
-                            'asb_pay_to' => $user_det->id,
-                            'asb_pay_ref' => $campaign_id,
-                            'asb_credit' => '0',
-                            'asb_debit' => $price_after_commission,
-                            'asb_submit_time' => $current_date,
-                            'asb_target_time' => $current_date,
-                            'asb_pay_mode' => '5', //*Flexiload*
-                            'asb_payment_status' => '1', //*1=paid, 2=checking*
-                            'asb_deal_type' => '2', //*1=deposit, 2=campaign*
-                            'credit_return_type' => '0',
-                        ]);
+                        BalanceHelper::addDebit(
+                            $user_det->create_by,
+                            $user_det->id,
+                            $campaign_id,
+                            $price_after_commission,
+                            5,
+                            1,
+                            2,
+                            $current_date,
+                            0
+                        );
                         $user_det = User::where('id', $user_det->create_by)->first();
-                        $user_position = $user_det->position;
+                        if ($user_det) {
+                            $user_position = $user_det->position;
+                        } else {
+                            break;
+                        }
                     }
 
 
@@ -1082,9 +1092,9 @@ public function buyOfferProcess(Request $request)
         }
 
         // Add prefix if missing
-        $targeted_number = \PhoneNumber::addNumberPrefix($request->targeted_number);
+        $targeted_number = PhoneNumber::addNumberPrefix($request->targeted_number);
 
-        if (!\PhoneNumber::isValid($targeted_number)) {
+        if (!PhoneNumber::isValid($targeted_number)) {
             return redirect()->back()->with([
                 'type'    => 'danger',
                 'message' => 'Invalid Number',
@@ -1092,9 +1102,9 @@ public function buyOfferProcess(Request $request)
         }
 
         // Get operator ID for logging
-        $op = \PhoneNumber::checkOperator($targeted_number)->id;
+        $op = PhoneNumber::checkOperator($targeted_number)->id;
 
-        $user_balance = \BalanceHelper::user_available_balance($user->id);
+        $user_balance = BalanceHelper::user_available_balance($user->id);
         $flexiload_price = $request->offer_amount;
 
         if ($flexiload_price > $user_balance) {
@@ -1105,7 +1115,7 @@ public function buyOfferProcess(Request $request)
             ]);
         }
 
-        if (!\BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_price)) {
+        if (!BalanceHelper::check_flexiload_parent_available_balance($user->id, $flexiload_price)) {
             return redirect()->back()->with([
                 'type'    => 'danger',
                 'message' => 'Insufficient balance. Please contact your reseller.',
@@ -1129,7 +1139,7 @@ public function buyOfferProcess(Request $request)
             'teletalk' => 'teletalk',
         ];
 
-        $operatorCode = $request->operator ?: \PhoneNumber::getOperatorNameForLoadByNumber($targeted_number);
+        $operatorCode = $request->operator ?: PhoneNumber::getOperatorNameForLoadByNumber($targeted_number);
         $operatorName = $operatorMapping[$operatorCode] ?? $operatorCode;
 
         // Save Load Campaign
@@ -1162,22 +1172,20 @@ public function buyOfferProcess(Request $request)
         $user_position = $user->position;
         $current_date = now();
 
-        while ($user_position >= 1) {
+        while ($user_position >= 1 && $user_det) {
             $price_after_commission = $flexiload_price - (($flexiload_price * $user_det->flexiload_commission) / 100);
 
-            AccSmsBalance::create([
-                'asb_paid_by'        => $user_det->create_by,
-                'asb_pay_to'         => $user_det->id,
-                'asb_pay_ref'        => $campaign_id,
-                'asb_credit'         => 0,
-                'asb_debit'          => $price_after_commission,
-                'asb_submit_time'    => $current_date,
-                'asb_target_time'    => $current_date,
-                'asb_pay_mode'       => 5,
-                'asb_payment_status' => 1,
-                'asb_deal_type'      => 2,
-                'credit_return_type' => 0,
-            ]);
+            BalanceHelper::addDebit(
+                $user_det->create_by,
+                $user_det->id,
+                $campaign_id,
+                $price_after_commission,
+                5,
+                1,
+                2,
+                $current_date,
+                0
+            );
 
             $user_det = User::where('id', $user_det->create_by)->first();
             if (!$user_det) break;

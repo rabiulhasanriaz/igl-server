@@ -13,6 +13,8 @@ use App\Model\LoadFlexibooksData;
 use App\Model\Operator;
 use Importer;
 use DB;
+use App\Helpers\PhoneNumber;
+use App\Helpers\FileRead;
 
 use Auth;
 use App\Model\PhonebookCategory;
@@ -118,8 +120,8 @@ class FlexibookController extends Controller
 
         $contact_number = $request->contact_number;
         $operator = $request->operator;
-        $contact_number = \PhoneNumber::addNumberPrefix($contact_number);
-        if ( !\PhoneNumber::isValid($contact_number) ) {
+        $contact_number = PhoneNumber::addNumberPrefix($contact_number);
+        if ( !PhoneNumber::isValid($contact_number) ) {
             return redirect()->back()->with(['type'=>'danger', 'message'=>'Invalid Number']);
         }
 
@@ -145,7 +147,7 @@ class FlexibookController extends Controller
             if ($request->operator != '') {
                 $data->operator = $operator;
             }else{
-                $data->operator = \PhoneNumber::getOperatorNameForLoadByNumber($contact_number);
+                $data->operator = PhoneNumber::getOperatorNameForLoadByNumber($contact_number);
             }
             $data->number_type = $number_type;
             $data->remarks = $remarks;
@@ -191,7 +193,7 @@ class FlexibookController extends Controller
             if ($request->operator != '') {
                 $edited_contact->operator = $request->operator;
             }else{
-                $edited_contact->operator = \PhoneNumber::getOperatorNameForLoadByNumber($request->contact_number);
+                $edited_contact->operator = PhoneNumber::getOperatorNameForLoadByNumber($request->contact_number);
             }
             $edited_contact->amount = $request->amount;
             $edited_contact->remarks = $request->remarks;
@@ -262,7 +264,7 @@ class FlexibookController extends Controller
         $file = Input::file('sms_file');
         $filename = $request->file('sms_file')->getClientOriginalName();
 
-        $fileType = \FileRead::getFileType($filename);
+        $fileType = FileRead::getFileType($filename);
         $allNames = array();
         $allContacts = array();
         $allAmount = array();
@@ -287,7 +289,7 @@ class FlexibookController extends Controller
             
             foreach ($fileContents as $fileContent) {
             	$allNames[$f] = $fileContent[0];
-                $allContacts[$f] = \PhoneNumber::addNumberPrefix($fileContent[1]);
+                $allContacts[$f] = PhoneNumber::addNumberPrefix($fileContent[1]);
                 $allOperator[$f] = $fileContent[5];
                 $allAmount[$f] = (int)$fileContent[2];
                 $allNumberTypes[$f] = (int)$fileContent[3];
@@ -332,7 +334,7 @@ class FlexibookController extends Controller
 
         try{
         	for( $i = 0; $i < count($allContacts); $i++ ){
-                if( !\PhoneNumber::isValid($allContacts[$i]) ) continue;
+                if( !PhoneNumber::isValid($allContacts[$i]) ) continue;
 
         		$f_data = new LoadFlexibooksData();
         		$f_data->load_flexibooks_id = $flexibook_id;
@@ -341,10 +343,10 @@ class FlexibookController extends Controller
                 if (in_array($allOperator[$i],$validOperator)) {
                     $f_data->operator = $allOperator[$i];
                 }else{
-                    $f_data->operator = \PhoneNumber::getOperatorNameForLoadByNumber($allContacts[$i]);                            
+                    $f_data->operator = PhoneNumber::getOperatorNameForLoadByNumber($allContacts[$i]);                            
                 }
         		$f_data->amount = $allAmount[$i];
-        		$f_data->number_type = \PhoneNumber::checkOperator($allContacts[$i])->id == 3 ? 1 : $allNumberTypes[$i];
+        		$f_data->number_type = PhoneNumber::checkOperator($allContacts[$i])->id == 3 ? 1 : $allNumberTypes[$i];
         		$f_data->remarks = $allRemarks[$i];
         		$f_data->status = 1;
 
