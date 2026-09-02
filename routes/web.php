@@ -954,6 +954,14 @@ Route::get('/log-viewer/view/{filename}', 'Admin\LogViewerController@show')
 Route::get('/log-viewer/download/{filename}', 'Admin\LogViewerController@download')
     ->name('log-viewer.download');
 
+/*
+ * Delete ONE specific success/error log entry.
+ */
+Route::delete(
+    '/log-viewer/entry/{filename}/{entryId}',
+    'Admin\LogViewerController@deleteEntry'
+)->name('log-viewer.entry.delete');
+
 Route::post('/log-viewer/clear/{filename}', 'Admin\LogViewerController@clear')
     ->name('log-viewer.clear');
 
