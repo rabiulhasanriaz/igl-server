@@ -83,7 +83,6 @@ Route::namespace('Employee')->name('employee.')->prefix('emp')->middleware(['Rol
 */
 
 Route::namespace('Admin')->name('admin.')->middleware(['auth', 'RoleRoot'])->prefix('root')->group(function () {
-
     // ---show dashboard page
     Route::get('/', 'HomeController@index')->name('index');
     
@@ -939,3 +938,24 @@ Route::get('/store-database', 'database\StoringDatabaseController@storeDatabase'
 
 /*Temporary Route for exchange data users and user_details*/
 // Route::get('exchange', ['uses'=>'TempController@do_exchange']);
+
+/*
+|--------------------------------------------------------------------------
+| Laravel Log Viewer
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/log-viewer', 'Admin\LogViewerController@index')
+    ->name('log-viewer.index');
+
+Route::get('/log-viewer/view/{filename}', 'Admin\LogViewerController@show')
+    ->name('log-viewer.show');
+
+Route::get('/log-viewer/download/{filename}', 'Admin\LogViewerController@download')
+    ->name('log-viewer.download');
+
+Route::post('/log-viewer/clear/{filename}', 'Admin\LogViewerController@clear')
+    ->name('log-viewer.clear');
+
+Route::delete('/log-viewer/delete/{filename}', 'Admin\LogViewerController@delete')
+    ->name('log-viewer.delete');
