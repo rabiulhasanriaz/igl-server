@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Model\AccSmsBalance;
 use App\Services\SSLCommerzService;
 use App\Services\BKashService;
+use App\Helpers\BalanceHelper;
 
 class BalanceController extends Controller
 {
@@ -203,23 +204,29 @@ class BalanceController extends Controller
                     $paid_by = $user ? $user->create_by : null;
 
                     DB::transaction(function () use ($user_id, $paid_by, $amount, $paymentID, $service_charge, $total_amount, $service_charge_percentage, $paymentData) {
-                        AccSmsBalance::create([
-                            'asb_paid_by' => $paid_by,
-                            'asb_pay_to' => $user_id,
-                            'asb_pay_ref' => $paymentID,
-                            'asb_credit' => $amount,
-                            'asb_debit' => 0,
-                            'asb_submit_time' => now(),
-                            'asb_target_time' => now(),
-                            'asb_pay_mode' => 3, // 3 for bKash
-                            'asb_payment_status' => 1,
-                            'asb_deal_type' => 1,
-                            'credit_return_type' => 'balance',
-                            'asb_service_charge' => $service_charge,
-                            'asb_service_charge_percentage' => $service_charge_percentage,
-                            'asb_total_paid' => $total_amount,
-                            'asb_gateway_response' => json_encode($paymentData),
-                        ]);
+                        BalanceHelper::addCredit(
+                            $paid_by,
+                            $user_id,
+                            $paymentID,
+                            $amount,
+                            3,
+                            1,
+                            1,
+                            now(),
+                            'balance'
+                        );
+
+                        AccSmsBalance::where('asb_pay_to', $user_id)
+                            ->where('asb_pay_ref', $paymentID)
+                            ->where('asb_credit', $amount)
+                            ->orderBy('id', 'desc')
+                            ->limit(1)
+                            ->update([
+                                'asb_service_charge' => $service_charge,
+                                'asb_service_charge_percentage' => $service_charge_percentage,
+                                'asb_total_paid' => $total_amount,
+                                'asb_gateway_response' => json_encode($paymentData),
+                            ]);
                     });
 
                     // Clear session
@@ -280,23 +287,28 @@ class BalanceController extends Controller
             $paid_by = $user ? $user->create_by : null;
 
             DB::transaction(function () use ($user_id, $paid_by, $amount, $tran_id, $service_charge, $total_amount, $service_charge_percentage) {
-                AccSmsBalance::create([
-                    'asb_paid_by' => $paid_by,   // Creator of this user
-                    'asb_pay_to' => $user_id,    // Current user receiving balance
-                    'asb_pay_ref' => $tran_id,
-                    'asb_credit' => $amount,     // Original amount credited
-                    'asb_debit' => 0,
-                    'asb_submit_time' => now(),
-                    'asb_target_time' => now(),
-                    'asb_pay_mode' => 2,
-                    'asb_payment_status' => 1,
-                    'asb_deal_type' => 1,
-                    'credit_return_type' => 'balance',
-                    // Store service charge information
-                    'asb_service_charge' => $service_charge,
-                    'asb_service_charge_percentage' => $service_charge_percentage,
-                    'asb_total_paid' => $total_amount,
-                ]);
+                BalanceHelper::addCredit(
+                    $paid_by,
+                    $user_id,
+                    $tran_id,
+                    $amount,
+                    2,
+                    1,
+                    1,
+                    now(),
+                    'balance'
+                );
+
+                AccSmsBalance::where('asb_pay_to', $user_id)
+                    ->where('asb_pay_ref', $tran_id)
+                    ->where('asb_credit', $amount)
+                    ->orderBy('id', 'desc')
+                    ->limit(1)
+                    ->update([
+                        'asb_service_charge' => $service_charge,
+                        'asb_service_charge_percentage' => $service_charge_percentage,
+                        'asb_total_paid' => $total_amount,
+                    ]);
             });
 
             // Clear session

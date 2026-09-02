@@ -26,7 +26,6 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Helpers\PhoneNumber;
 use App\Helpers\BalanceHelper;
-use App\Helpers\SmsHelper;
 
 class LoginController extends Controller
 {
@@ -286,13 +285,13 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             // ----------------------------
             // CHECK SMS TYPE
             // ----------------------------
-            $isUnicode = SmsHelper::is_unicode($message);
+            $isUnicode = \SmsHelper::is_unicode($message);
 
             if ($isUnicode) {
-                $sms_number = SmsHelper::unicode_sms_count($message);
+                $sms_number = \SmsHelper::unicode_sms_count($message);
                 $smsType = 'unicode';
             } else {
-                $sms_number = SmsHelper::text_sms_count($message);
+                $sms_number = \SmsHelper::text_sms_count($message);
                 $smsType = 'text';
             }
 
@@ -301,7 +300,7 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             // ----------------------------
             $validNumbers = [];
             $number = PhoneNumber::addNumberPrefix($cellphone);
-
+            
             if (PhoneNumber::isValid($number)) {
                 $validNumbers[] = $number;
             }
@@ -323,7 +322,7 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             // USER BALANCE CHECK
             // ----------------------------
             $userBalance = BalanceHelper::user_available_balance($user->id);
-
+            
             if ($userBalance < $total_cost) {
                 session(['otp_error_message' => 'Insufficient balance. Please recharge your account.']);
                 return false;
@@ -338,9 +337,9 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
             // ----------------------------
             // BROWSER INFO
             // ----------------------------
-            $browser_info = SmsHelper::getBrowser();
+            $browser_info = \SmsHelper::getBrowser();
             $br = $browser_info['name'] . " | " . $browser_info['version'];
-            $os = SmsHelper::os_info($_SERVER['HTTP_USER_AGENT']);
+            $os = \SmsHelper::os_info($_SERVER['HTTP_USER_AGENT']);
             $br .= ' | ' . $os;
 
             // ----------------------------
@@ -618,13 +617,13 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
         $cellphone = $user->cellphone;
 
         // CHECK SMS TYPE (SAME AS OTP)
-        $isUnicode = SmsHelper::is_unicode($message);
+        $isUnicode = \SmsHelper::is_unicode($message);
 
         if ($isUnicode) {
-            $sms_number = SmsHelper::unicode_sms_count($message);
+            $sms_number = \SmsHelper::unicode_sms_count($message);
             $smsType = 'unicode';
         } else {
-            $sms_number = SmsHelper::text_sms_count($message);
+            $sms_number = \SmsHelper::text_sms_count($message);
             $smsType = 'text';
         }
 
@@ -667,9 +666,9 @@ private function isIpWhitelisted($clientIp, $whitelistedIps)
         $target_time = Carbon::now();
 
         // BROWSER INFO (SAME AS OTP)
-        $browser_info = SmsHelper::getBrowser();
+        $browser_info = \SmsHelper::getBrowser();
         $br = $browser_info['name'] . " | " . $browser_info['version'];
-        $os = SmsHelper::os_info($_SERVER['HTTP_USER_AGENT']);
+        $os = \SmsHelper::os_info($_SERVER['HTTP_USER_AGENT']);
         $br .= ' | ' . $os;
 
         // CREATE CAMPAIGN (SAME AS OTP)

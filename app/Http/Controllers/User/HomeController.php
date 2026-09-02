@@ -62,7 +62,7 @@ class HomeController extends Controller
                 
                 $statistics = [
                     'sms_credit' => AccSmsRate::with('operator')->where('user_id', $user_id)->get(),
-                    'balance_bd' => \BalanceHelper::user_available_balance($user_id)
+                    'balance_bd' => BalanceHelper::user_available_balance($user_id)
                 ];
 
                 return response()->json($statistics);

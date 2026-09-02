@@ -1,5 +1,4 @@
 <?php
-
 use GuzzleHttp\Client;
 use App\Model\AccSmsRate;
 use App\Model\SenderIdRegister;
