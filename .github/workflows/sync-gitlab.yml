@@ -7,6 +7,7 @@ on:
 
 jobs:
   sync:
+    name: Sync main branch to GitLab
     runs-on: ubuntu-latest
 
     steps:
@@ -15,22 +16,36 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate GitLab configuration
+        env:
+          RAW_GITLAB_TOKEN: ${{ secrets.IGL_SMS }}
+          RAW_GITLAB_REPOSITORY: ${{ secrets.IGL_SMS_REPO }}
+        run: |
+          GITLAB_TOKEN="$(printf '%s' "$RAW_GITLAB_TOKEN" | tr -d '\r\n')"
+          GITLAB_REPOSITORY="$(printf '%s' "$RAW_GITLAB_REPOSITORY" | tr -d '\r\n')"
+
+          if [ -z "$GITLAB_TOKEN" ]; then
+            echo "GitLab token is missing."
+            exit 1
+          fi
+
+          if [ -z "$GITLAB_REPOSITORY" ]; then
+            echo "GitLab repository is missing."
+            exit 1
+          fi
+
+          echo "GitLab configuration found."
+          echo "Repository: $GITLAB_REPOSITORY"
+
       - name: Push to GitLab
         env:
-          GITLAB_TOKEN: ${{ secrets.IGL_SMS }}
-          GITLAB_REPOSITORY: ${{ secrets.IGL_SMS_REPO }}
+          RAW_GITLAB_TOKEN: ${{ secrets.IGL_SMS }}
+          RAW_GITLAB_REPOSITORY: ${{ secrets.IGL_SMS_REPO }}
         run: |
-          test -n "$GITLAB_TOKEN" || {
-            echo "GitLab token is missing"
-            exit 1
-          }
+          GITLAB_TOKEN="$(printf '%s' "$RAW_GITLAB_TOKEN" | tr -d '\r\n')"
+          GITLAB_REPOSITORY="$(printf '%s' "$RAW_GITLAB_REPOSITORY" | tr -d '\r\n')"
 
-          test -n "$GITLAB_REPOSITORY" || {
-            echo "GitLab repository is missing"
-            exit 1
-          }
-
-          echo "Syncing to GitLab repository: $GITLAB_REPOSITORY"
+          git remote remove gitlab 2>/dev/null || true
 
           git remote add gitlab \
             "https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_REPOSITORY}.git"
