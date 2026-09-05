@@ -17,12 +17,9 @@ jobs:
 
       - name: Push to GitLab
         env:
-          RAW_GITLAB_TOKEN: ${{ secrets.IGL_SMS }}
-          RAW_GITLAB_REPOSITORY: ${{ secrets.IGL_SMS_REPO }}
+          GITLAB_TOKEN: ${{ secrets.IGL_SMS }}
+          GITLAB_REPOSITORY: ${{ secrets.IGL_SMS_REPO }}
         run: |
-          GITLAB_TOKEN="$(printf '%s' "$RAW_GITLAB_TOKEN" | tr -d '\r\n')"
-          GITLAB_REPOSITORY="$(printf '%s' "$RAW_GITLAB_REPOSITORY" | tr -d '\r\n')"
-
           test -n "$GITLAB_TOKEN" || {
             echo "GitLab token is missing"
             exit 1
@@ -33,7 +30,7 @@ jobs:
             exit 1
           }
 
-          echo "Repository configured."
+          echo "Syncing to GitLab repository: $GITLAB_REPOSITORY"
 
           git remote add gitlab \
             "https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_REPOSITORY}.git"
