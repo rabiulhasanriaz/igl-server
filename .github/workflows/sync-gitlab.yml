@@ -18,23 +18,20 @@ jobs:
       - name: Check GitLab configuration
         env:
           GITLAB_TOKEN: ${{ secrets.IGL_SMS }}
-          GITLAB_USERNAME: ${{ secrets.IGL_SMS_USERNAME }}
           GITLAB_REPOSITORY: ${{ secrets.IGL_SMS_REPO }}
         run: |
-          test -n "$GITLAB_TOKEN" || { echo "IGL_SMS is missing"; exit 1; }
-          test -n "$GITLAB_USERNAME" || { echo "IGL_SMS_USERNAME is missing"; exit 1; }
-          test -n "$GITLAB_REPOSITORY" || { echo "IGL_SMS_REPO is missing"; exit 1; }
+          test -n "$GITLAB_TOKEN" || { echo "GitLab token is missing"; exit 1; }
+          test -n "$GITLAB_REPOSITORY" || { echo "GitLab repository is missing"; exit 1; }
 
           echo "GitLab configuration found."
           echo "Repository: $GITLAB_REPOSITORY"
 
-      - name: Sync to GitLab
+      - name: Push to GitLab
         env:
           GITLAB_TOKEN: ${{ secrets.IGL_SMS }}
-          GITLAB_USERNAME: ${{ secrets.IGL_SMS_USERNAME }}
           GITLAB_REPOSITORY: ${{ secrets.IGL_SMS_REPO }}
         run: |
           git remote add gitlab \
-            "https://${GITLAB_USERNAME}:${GITLAB_TOKEN}@gitlab.com/${GITLAB_REPOSITORY}.git"
+            "https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_REPOSITORY}.git"
 
           git push gitlab main
